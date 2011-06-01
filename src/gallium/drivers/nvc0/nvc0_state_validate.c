@@ -340,17 +340,15 @@ nvc0_constbufs_validate(struct nvc0_context *nvc0)
                else
                   nvc0->state.uniform_buffer_bound[s] =
                      align(res->base.width0, 0x100);
+
+               words = res->base.width0 / 4;
             } else {
+               nouveau_buffer_migrate(&nvc0->base, res, NOUVEAU_BO_VRAM);
                bo = res->bo;
+
+               BEGIN_RING(chan, RING_3D(MEM_BARRIER), 1);
+               OUT_RING  (chan, 0x1111);
             }
-#if 0
-            nvc0_m2mf_push_linear(nvc0, bo, NOUVEAU_BO_VRAM,
-                                  base, res->base.width0, res->data);
-            BEGIN_RING(chan, RING_3D_(0x021c), 1);
-            OUT_RING  (chan, 0x1111);
-#else
-            words = res->base.width0 / 4;
-#endif
          } else {
             bo = res->bo;
             if (i == 0)
