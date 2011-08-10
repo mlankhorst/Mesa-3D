@@ -749,7 +749,7 @@ nvc0_vertex_state_bind(struct pipe_context *pipe, void *hwcso)
 
 static void *
 nvc0_tfb_state_create(struct pipe_context *pipe,
-                      const struct pipe_stream_output_state *pso)
+                      const struct pipe_stream_output_info *pso)
 {
    struct nvc0_transform_feedback_state *so;
    int n = 0;

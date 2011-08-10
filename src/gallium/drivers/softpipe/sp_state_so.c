@@ -36,7 +36,7 @@
 
 static void *
 softpipe_create_stream_output_state(struct pipe_context *pipe,
-                                    const struct pipe_stream_output_state *templ)
+                                    const struct pipe_stream_output_info *templ)
 {
    struct sp_so_state *so;
    so = (struct sp_so_state *) CALLOC_STRUCT(sp_so_state);
