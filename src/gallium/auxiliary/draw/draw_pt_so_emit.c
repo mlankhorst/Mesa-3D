@@ -130,7 +130,7 @@ static void so_emit_prim(struct pt_so_emit *so,
    unsigned input_vertex_stride = so->input_vertex_stride;
    struct draw_context *draw = so->draw;
    const float (*input_ptr)[4];
-   const struct pipe_stream_output_state *state =
+   const struct pipe_stream_output_info *state =
       &draw->so.state;
    float **buffer = 0;
 
