@@ -27,6 +27,18 @@ C_SOURCES = \
 	nv50_push.c \
 	nv50_query.c
 
+CPP_SOURCES = \
+	codegen/nv50_ir.cpp \
+	codegen/nv50_ir_bb.cpp \
+	codegen/nv50_ir_build_util.cpp \
+	codegen/nv50_ir_from_tgsi.cpp \
+	codegen/nv50_ir_graph.cpp \
+	codegen/nv50_ir_peephole.cpp \
+	codegen/nv50_ir_print.cpp \
+	codegen/nv50_ir_ra.cpp \
+	codegen/nv50_ir_ssa.cpp \
+	codegen/nv50_ir_util.cpp
+
 LIBRARY_INCLUDES = \
 	$(LIBDRM_CFLAGS)
 

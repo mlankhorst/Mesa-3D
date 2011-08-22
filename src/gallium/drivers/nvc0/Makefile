@@ -28,6 +28,11 @@ C_SOURCES = \
 	nvc0_push2.c \
 	nvc0_query.c
 
+CPP_SOURCES = \
+	codegen/nv50_ir_emit_nvc0.cpp \
+	codegen/nv50_ir_lowering_nvc0.cpp \
+	codegen/nv50_ir_target_nvc0.cpp
+
 LIBRARY_INCLUDES = \
 	$(LIBDRM_CFLAGS)
 
