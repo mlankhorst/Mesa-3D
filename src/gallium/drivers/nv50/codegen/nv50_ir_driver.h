@@ -118,9 +118,7 @@ struct nv50_ir_prog_info
 extern "C" {
 #endif
 
-int nvc0_shader_assign_slots(struct nv50_ir_prog_info *);
-
-int nv50_ir_generate_code(struct nv50_ir_prog_info *);
+extern int nv50_ir_generate_code(struct nv50_ir_prog_info *);
 
 #ifdef __cplusplus
 }
