@@ -10,6 +10,8 @@ public:
 
    virtual CodeEmitter *getCodeEmitter(Program::Type);
 
+   virtual bool runLegalizePass(Program *, CGStage stage) const;
+
    virtual bool insnCanLoad(const Instruction *insn, int s,
                             const Instruction *ld) const;
    virtual bool isOpSupported(operation, DataType) const;
@@ -22,7 +24,9 @@ public:
 
    virtual uint32_t getSVAddress(DataFile shaderFile, const Symbol *sv) const;
 
-   virtual bool runLegalizePass(Program *, CGStage stage) const;
+private:
+   void initOpInfo();
+
 };
 
 } // namespace nv50_ir
