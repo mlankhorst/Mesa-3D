@@ -44,11 +44,11 @@ private:
 void DominatorTree::debugPrint()
 {
    for (int i = 0; i < count; ++i) {
-      debug_printf("SEMI(%i) = %i\n", i, SEMI(i));
-      debug_printf("ANCESTOR(%i) = %i\n", i, ANCESTOR(i));
-      debug_printf("PARENT(%i) = %i\n", i, PARENT(i));
-      debug_printf("LABEL(%i) = %i\n", i, LABEL(i));
-      debug_printf("DOM(%i) = %i\n", i, DOM(i));
+      INFO("SEMI(%i) = %i\n", i, SEMI(i));
+      INFO("ANCESTOR(%i) = %i\n", i, ANCESTOR(i));
+      INFO("PARENT(%i) = %i\n", i, PARENT(i));
+      INFO("LABEL(%i) = %i\n", i, LABEL(i));
+      INFO("DOM(%i) = %i\n", i, DOM(i));
    }
 }
 

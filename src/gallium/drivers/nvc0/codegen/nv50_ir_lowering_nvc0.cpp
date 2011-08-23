@@ -1,7 +1,8 @@
 
 #include "nv50/codegen/nv50_ir.h"
 #include "nv50/codegen/nv50_ir_build_util.h"
-#include "nv50/codegen/nv50_ir_target.h"
+
+#include "nv50_ir_target_nvc0.h"
 
 namespace nv50_ir {
 
@@ -13,35 +14,6 @@ namespace nv50_ir {
 #define QUADOP(q, r, s, t)                      \
    ((QOP_##q << 0) | (QOP_##r << 2) |           \
     (QOP_##s << 4) | (QOP_##t << 6))
-
-bool
-Instruction::isNop() const
-{
-   if (op == OP_CONSTRAINT || op == OP_PHI)
-      return true;
-   if (terminator || join) // XXX: should terminator imply flow ?
-      return false;
-   if (!fixed && op == OP_NOP)
-      return true;
-
-   if (def[0].exists() && def[0].rep()->reg.data.id < 0) {
-      for (int d = 1; defExists(d); ++d)
-         if (def[d].rep()->reg.data.id >= 0)
-            WARN("part of vector result is unused !\n");
-      return true;
-   }
-
-   if (op == OP_MOV || op == OP_UNION) {
-      if (!def[0].rep()->equals(getSrc(0)))
-         return false;
-      if (op == OP_UNION)
-         if (!def[0].rep()->equals(getSrc(1)))
-            return false;
-      return true;
-   }
-
-   return false;
-}
 
 class NVC0LegalizePostRA : public Pass
 {
@@ -161,117 +133,6 @@ NVC0LegalizePostRA::visit(BasicBlock *bb)
       propagateJoin(bb);
 
    return true;
-}
-
-void
-CodeEmitter::prepareEmission(Program *prog)
-{
-   for (ArrayList::Iterator fi = prog->allFuncs.iterator();
-        !fi.end(); fi.next()) {
-      Function *func = reinterpret_cast<Function *>(fi.get());
-      func->binPos = prog->binSize;
-      prepareEmission(func);
-      prog->binSize += func->binSize;
-   }
-}
-
-void
-CodeEmitter::prepareEmission(Function *func)
-{
-   func->bbCount = 0;
-   func->bbArray = new BasicBlock * [func->cfg.getSize()];
-
-   BasicBlock::get(func->cfg.getRoot())->binPos = func->binPos;
-
-   for (Iterator *iter = func->cfg.iteratorCFG(); !iter->end(); iter->next())
-      prepareEmission(BasicBlock::get(*iter));
-}
-
-void
-CodeEmitter::prepareEmission(BasicBlock *bb)
-{
-   Instruction *i, *next;
-   Function *func = bb->getFunction();
-   int j;
-   unsigned int nShort;
-
-   for (j = func->bbCount - 1; j >= 0 && !func->bbArray[j]->binSize; --j);
-
-   for (; j >= 0; --j) {
-      BasicBlock *in = func->bbArray[j];
-      Instruction *exit = in->getExit();
-
-      if (exit && exit->op == OP_BRA && exit->asFlow()->target.bb == bb) {
-         in->binSize -= 8;
-         func->binSize -= 8;
-
-         for (++j; j < func->bbCount; ++j)
-            func->bbArray[j]->binPos -= 8;
-
-         in->remove(exit);
-      }
-      bb->binPos = in->binPos + in->binSize;
-      if (in->binSize) // no more no-op branches to bb
-         break;
-   }
-   func->bbArray[func->bbCount++] = bb;
-
-   if (!bb->getExit())
-      return;
-
-   // determine encoding size, try to group short instructions
-   nShort = 0;
-   for (i = bb->getEntry(); i; i = next) {
-      next = i->next;
-
-      i->encSize = getMinEncodingSize(i);
-      if (next && i->encSize < 8)
-         ++nShort;
-      else
-      if ((nShort & 1) && next && getMinEncodingSize(next) == 4) {
-         if (i->isCommutationLegal(i->next)) {
-            bb->permuteAdjacent(i, next);
-            next->encSize = 4;
-            next = i;
-            i = i->prev;
-            ++nShort;
-         } else
-         if (i->isCommutationLegal(i->prev) && next->next) {
-            bb->permuteAdjacent(i->prev, i);
-            next->encSize = 4;
-            next = next->next;
-            bb->binSize += 4;
-            ++nShort;
-         } else {
-            i->encSize = 8;
-            i->prev->encSize = 8;
-            bb->binSize += 4;
-            nShort = 0;
-         }
-      } else {
-         i->encSize = 8;
-         if (nShort & 1) {
-            i->prev->encSize = 8;
-            bb->binSize += 4;
-         }
-         nShort = 0;
-      }
-      bb->binSize += i->encSize;
-   }
-
-   if (bb->getExit()->encSize == 4) {
-      assert(nShort);
-      bb->getExit()->encSize = 8;
-      bb->binSize += 4;
-
-      if ((bb->getExit()->prev->encSize == 4) && !(nShort & 1)) {
-         bb->binSize += 8;
-         bb->getExit()->prev->encSize = 8;
-      }
-   }
-   assert(!bb->getEntry() || (bb->getExit() && bb->getExit()->encSize == 8));
-
-   func->binSize += bb->binSize;
 }
 
 class NVC0LoweringPass : public Pass
@@ -708,7 +569,7 @@ NVC0LoweringPass::visit(Instruction *i)
 }
 
 bool
-Target::runLegalizePass(Program *prog, CGStage stage) const
+TargetNVC0::runLegalizePass(Program *prog, CGStage stage) const
 {
    if (stage == CG_STAGE_PRE_SSA) {
       NVC0LoweringPass pass(prog);

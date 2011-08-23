@@ -9,14 +9,14 @@ namespace nv50_ir {
 class CodeEmitter
 {
 public:
-   // @return: whether the instruction has been successfully written
+   // returns whether the instruction was encodable and written
    virtual bool emitInstruction(Instruction *) = 0;
 
    virtual uint32_t getMinEncodingSize(const Instruction *) const = 0;
 
    void setCodeLocation(void *, uint32_t size);
-   void *getCodeLocation() const { return code; }
-   uint32_t getCodeSize() const { return codeSize; }
+   inline void *getCodeLocation() const { return code; }
+   inline uint32_t getCodeSize() const { return codeSize; }
 
    void prepareEmission(Program *);
    void prepareEmission(Function *);
@@ -33,42 +33,18 @@ protected:
 class Target
 {
 public:
-   Target()
-      : joinAnterior(false)
+   static Target *create(unsigned int chipset);
+
+   inline unsigned int getChipset() const { return chipset; }
+
+   virtual CodeEmitter *getCodeEmitter(Program::Type) = 0;
+
+   virtual bool runLegalizePass(Program *, CGStage stage) const = 0;
+
+public:
+   struct OpInfo
    {
-      chipset = 0xc0;
-      arch = chipset & 0xf0;
-
-      initOpInfo();
-   };
-
-   unsigned int getArch() const { return arch; }
-   unsigned int getChipset() const { return chipset; }
-
-   virtual bool insnCanLoad(const Instruction *, int s, const Instruction *ld)
-      const;
-   virtual bool isOpSupported(operation, DataType) const;
-   virtual bool isModSupported(const Instruction *, int s, Modifier) const;
-   virtual bool isSatSupported(const Instruction *) const;
-   virtual bool mayPredicate(const Instruction *, const Value *) const;
-
-   bool shaderExportInPlace(Program::Type) const;
-
-   virtual unsigned int getFileSize(DataFile) const;
-   virtual unsigned int getFileUnit(DataFile) const;
-
-   uint32_t getSVAddress(DataFile shaderFile, const Symbol *sv) const;
-
-   virtual CodeEmitter *getCodeEmitter(Program::Type);
-   inline  void         putCodeEmitter(CodeEmitter *);
-
-   virtual bool runLegalizePass(Program *, CGStage stage) const;
-
-   class OpInfo
-   {
-   public:
       OpInfo *variants;
-      const char *name;
       operation op;
       uint16_t srcTypes;
       uint16_t dstTypes;
@@ -87,50 +63,48 @@ public:
       unsigned int hasDest     : 1;
    };
 
-   static Target *create(unsigned int arch)
-   {
-      switch (arch & 0xf0) {
-      case 0x50:
-      case 0x80:
-      case 0x90:
-      case 0xa0:
-      case 0xc0:
-         return new Target();
-      default:
-         ERROR("unsupported target: %x\n", arch);
-         return 0;
-      }
-   }
+   inline const OpInfo& getOpInfo(const Instruction *) const;
+   inline const OpInfo& getOpInfo(const operation) const;
 
-   inline const OpInfo& getInfo(const Instruction *insn) const
-   {
-      return opInfo[MIN2(insn->op, OP_LAST)];
-   }
+   inline DataFile nativeFile(DataFile f) const;
 
-   inline const OpInfo& getOpInfo(const operation op) const
-   {
-      return opInfo[op];
-   }
+   virtual bool insnCanLoad(const Instruction *insn, int s,
+                            const Instruction *ld) const = 0;
+   virtual bool isOpSupported(operation, DataType) const = 0;
+   virtual bool isModSupported(const Instruction *, int s, Modifier) const = 0;
+   virtual bool isSatSupported(const Instruction *) const = 0;
+   virtual bool mayPredicate(const Instruction *, const Value *) const = 0;
 
-   inline DataFile nativeFile(DataFile f) const
-   {
-      return fileMap[f];
-   }
+   virtual unsigned int getFileSize(DataFile) const = 0;
+   virtual unsigned int getFileUnit(DataFile) const = 0;
+
+   virtual uint32_t getSVAddress(DataFile, const Symbol *) const = 0;
 
 public:
-   const bool joinAnterior; // true if join is executed before the op
+   bool joinAnterior; // true if join is executed before the op
 
-private:
-   void initOpInfo();
-
-private:
-   unsigned int arch;
+protected:
    unsigned int chipset;
 
-   DataFile fileMap[DATA_FILE_COUNT];
+   DataFile nativeFileMap[DATA_FILE_COUNT];
 
    OpInfo opInfo[OP_LAST + 1];
 };
+
+const Target::OpInfo& Target::getOpInfo(const Instruction *insn) const
+{
+   return opInfo[MIN2(insn->op, OP_LAST)];
+}
+
+const Target::OpInfo& Target::getOpInfo(const operation op) const
+{
+   return opInfo[op];
+}
+
+inline DataFile Target::nativeFile(DataFile f) const
+{
+   return nativeFileMap[f];
+}
 
 } // namespace nv50_ir
 

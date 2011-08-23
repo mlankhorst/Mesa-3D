@@ -37,6 +37,7 @@ CPP_SOURCES = \
 	codegen/nv50_ir_print.cpp \
 	codegen/nv50_ir_ra.cpp \
 	codegen/nv50_ir_ssa.cpp \
+	codegen/nv50_ir_target.cpp \
 	codegen/nv50_ir_util.cpp
 
 LIBRARY_INCLUDES = \

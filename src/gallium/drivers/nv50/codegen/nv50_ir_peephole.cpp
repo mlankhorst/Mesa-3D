@@ -4,6 +4,35 @@
 
 namespace nv50_ir {
 
+bool
+Instruction::isNop() const
+{
+   if (op == OP_CONSTRAINT || op == OP_PHI)
+      return true;
+   if (terminator || join) // XXX: should terminator imply flow ?
+      return false;
+   if (!fixed && op == OP_NOP)
+      return true;
+
+   if (def[0].exists() && def[0].rep()->reg.data.id < 0) {
+      for (int d = 1; defExists(d); ++d)
+         if (def[d].rep()->reg.data.id >= 0)
+            WARN("part of vector result is unused !\n");
+      return true;
+   }
+
+   if (op == OP_MOV || op == OP_UNION) {
+      if (!def[0].rep()->equals(getSrc(0)))
+         return false;
+      if (op == OP_UNION)
+         if (!def[0].rep()->equals(getSrc(1)))
+            return false;
+      return true;
+   }
+
+   return false;
+}
+
 bool Instruction::isDead() const
 {
    if (op == OP_STORE ||
@@ -82,7 +111,7 @@ LoadPropagation::isImmd32Load(Instruction *ld)
 void
 LoadPropagation::checkSwapSrc01(Instruction *insn)
 {
-   if (!prog->getTarget()->getInfo(insn).commutative)
+   if (!prog->getTarget()->getOpInfo(insn).commutative)
       if (insn->op != OP_SET && insn->op != OP_SLCT)
          return;
    if (insn->src[1].getFile() != FILE_GPR)

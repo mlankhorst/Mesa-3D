@@ -755,7 +755,7 @@ RegAlloc::execFunc()
    ret = coalesceValues(JOIN_MASK_PHI);
    if (!ret)
       goto out;
-   switch (prog->getTarget()->getArch()) {
+   switch (prog->getTarget()->getChipset() & 0xf0) {
    case 0x50:
       ret = coalesceValues(JOIN_MASK_UNION | JOIN_MASK_TEX);
       break;

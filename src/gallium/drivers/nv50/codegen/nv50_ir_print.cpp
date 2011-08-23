@@ -4,19 +4,21 @@
 
 namespace nv50_ir {
 
-enum TextColour {
-   COL_DEFAULT,
-   COL_GPR,
-   COL_REG,
-   COL_FLAG,
-   COL_MEM,
-   COL_IMM,
-   COL_BRA,
-   COL_INSN
+enum TextStyle
+{
+   TXT_DEFAULT,
+   TXT_GPR,
+   TXT_REGISTER,
+   TXT_FLAGS,
+   TXT_MEM,
+   TXT_IMMD,
+   TXT_BRA,
+   TXT_INSN
 };
 
-static const char *colour[] =
+static const char *colour[8] =
 {
+#if 1
    "\x1b[00m",
    "\x1b[34m",
    "\x1b[35m",
@@ -25,9 +27,109 @@ static const char *colour[] =
    "\x1b[33m",
    "\x1b[37m",
    "\x1b[32m"
+#else
+   "", "", "", "", "", "", "", ""
+#endif
 };
 
-static const char *DataType_str[] =
+const char *operationStr[OP_LAST + 1] =
+{
+   "nop",
+   "phi",
+   "union",
+   "split",
+   "merge",
+   "consec",
+   "mov",
+   "ld",
+   "st",
+   "add",
+   "sub",
+   "mul",
+   "div",
+   "mod",
+   "mad",
+   "fma",
+   "sad",
+   "abs",
+   "neg",
+   "not",
+   "and",
+   "or",
+   "xor",
+   "shl",
+   "shr",
+   "max",
+   "min",
+   "sat",
+   "ceil",
+   "floor",
+   "trunc",
+   "cvt",
+   "set and",
+   "set or",
+   "set xor",
+   "set",
+   "selp",
+   "slct",
+   "rcp",
+   "rsq",
+   "lg2",
+   "sin",
+   "cos",
+   "ex2",
+   "exp",
+   "log",
+   "presin",
+   "preex2",
+   "sqrt",
+   "pow",
+   "bra",
+   "call",
+   "ret",
+   "cont",
+   "break",
+   "preret",
+   "precont",
+   "prebreak",
+   "brkpt",
+   "joinat",
+   "join",
+   "discard",
+   "exit",
+   "barrier",
+   "vfetch",
+   "pfetch",
+   "export",
+   "linterp",
+   "pinterp",
+   "emit",
+   "restart",
+   "tex",
+   "texbias",
+   "texlod",
+   "texfetch",
+   "texquery",
+   "texgrad",
+   "texgather",
+   "texcsaa",
+   "suld",
+   "sust",
+   "dfdx",
+   "dfdy",
+   "rdsv",
+   "wrsv",
+   "pixld",
+   "quadop",
+   "quadon",
+   "quadpop",
+   "popcnt",
+   "insbf",
+   "extbf",
+   "(invalid)"
+};
+
+static const char *DataTypeStr[] =
 {
    "-",
    "u8", "s8",
@@ -38,16 +140,70 @@ static const char *DataType_str[] =
    "b96", "b128"
 };
 
-static const char *RoundMode_str[] =
+static const char *RoundModeStr[] =
 {
    "", "rm", "rz" "rp", "rni", "rmi", "rzi", "rpi"
 };
 
-static const char *CondCode_str[] =
+static const char *CondCodeStr[] =
 {
-   "never", "lt",  "eq",  "le",  "gt",  "ne",   "ge", "",
-   "(invalid)", "ltu", "equ", "leu", "gtu", "neu", "geu", "",
-   "no", "nc", "ns", "na", "a", "s", "c", "o"
+   "never",
+   "lt",
+   "eq",
+   "le",
+   "gt",
+   "ne",
+   "ge",
+   "",
+   "(invalid)",
+   "ltu",
+   "equ",
+   "leu",
+   "gtu",
+   "neu",
+   "geu",
+   "",
+   "no",
+   "nc",
+   "ns",
+   "na",
+   "a",
+   "s",
+   "c",
+   "o"
+};
+
+static const char *SemanticStr[SV_LAST + 1] =
+{
+   "POSITION",
+   "VERTEX_ID",
+   "INSTANCE_ID",
+   "INVOCATION_ID",
+   "PRIMITIVE_ID",
+   "VERTEX_COUNT",
+   "LAYER",
+   "VIEWPORT_INDEX",
+   "Y_DIR",
+   "FACE",
+   "POINT_SIZE",
+   "POINT_COORD",
+   "CLIP_DISTANCE",
+   "SAMPLE_INDEX",
+   "TESS_FACTOR",
+   "TESS_COORD",
+   "TID",
+   "CTAID",
+   "NTID",
+   "GRIDID",
+   "NCTAID",
+   "LANEID",
+   "PHYSID",
+   "NPHYSID",
+   "CLOCK",
+   "LBASE",
+   "SBASE",
+   "?",
+   "(INVALID)"
 };
 
 #define PRINT(args...)                                \
@@ -73,7 +229,7 @@ int Modifier::print(char *buf, size_t size) const
    size_t pos = 0;
 
    if (bits)
-      PRINT("%s", colour[COL_INSN]);
+      PRINT("%s", colour[TXT_INSN]);
 
    size_t base = pos;
 
@@ -95,20 +251,20 @@ int LValue::print(char *buf, size_t size, DataType ty) const
    int idx = join->reg.data.id >= 0 ? join->reg.data.id : id;
    char p = join->reg.data.id >= 0 ? '$' : '%';
    char r;
-   int col = COL_DEFAULT;
+   int col = TXT_DEFAULT;
 
    switch (reg.file) {
    case FILE_GPR:
-      r = 'r'; col = COL_GPR;
+      r = 'r'; col = TXT_GPR;
       break;
    case FILE_PREDICATE:
-      r = 'p'; col = COL_REG;
+      r = 'p'; col = TXT_REGISTER;
       break;
    case FILE_FLAGS:
-      r = 'c'; col = COL_FLAG;
+      r = 'c'; col = TXT_FLAGS;
       break;
    case FILE_ADDRESS:
-      r = 'a'; col = COL_REG;
+      r = 'a'; col = TXT_REGISTER;
       break;
    default:
       assert(!"invalid file for lvalue");
@@ -125,7 +281,7 @@ int ImmediateValue::print(char *buf, size_t size, DataType ty) const
 {
    size_t pos = 0;
 
-   PRINT("%s", colour[COL_IMM]);
+   PRINT("%s", colour[TXT_IMMD]);
 
    switch (ty) {
    case TYPE_F32: PRINT("%f", reg.data.f32); break;
@@ -152,19 +308,6 @@ int Symbol::print(char *buf, size_t size, DataType ty) const
 
 int Symbol::print(char *buf, size_t size, Value *rel, DataType ty) const
 {
-   static const char *sysValueStr[SV_LAST + 1] =
-   {
-      "POSITION",
-      "VERTEX_ID", "INSTANCE_ID", "INVOCATION_ID", "PRIMITIVE_ID",
-      "VERTEX_COUNT",
-      "LAYER", "VIEWPORT_INDEX",
-      "Y_DIR", "FACE",
-      "POINT_SIZE", "POINT_COORD", "CLIP_DISTANCE",
-      "SAMPLE_INDEX", "TESS_FACTOR", "TESS_COORD",
-      "TID", "CTAID", "NTID", "GRIDID", "NCTAID", "LANEID", "PHYSID", "NPHYSID",
-      "CLOCK", "LBASE", "SBASE", "?", "(INVALID)"
-   };
-
    size_t pos = 0;
    char c;
 
@@ -172,14 +315,14 @@ int Symbol::print(char *buf, size_t size, Value *rel, DataType ty) const
       ty = typeOfSize(reg.size);
 
    if (reg.file == FILE_SYSTEM_VALUE) {
-      PRINT("%ssv[%s%s:%i%s", colour[COL_MEM],
-            colour[COL_REG],
-            sysValueStr[reg.data.sv.sv], reg.data.sv.index, colour[COL_MEM]);
+      PRINT("%ssv[%s%s:%i%s", colour[TXT_MEM],
+            colour[TXT_REGISTER],
+            SemanticStr[reg.data.sv.sv], reg.data.sv.index, colour[TXT_MEM]);
       if (rel) {
-         PRINT("%s+", colour[COL_DEFAULT]);
+         PRINT("%s+", colour[TXT_DEFAULT]);
          pos += rel->print(&buf[pos], size - pos);
       }
-      PRINT("%s]", colour[COL_MEM]);
+      PRINT("%s]", colour[TXT_MEM]);
       return pos;
    }
 
@@ -196,19 +339,18 @@ int Symbol::print(char *buf, size_t size, Value *rel, DataType ty) const
       break;
    }
 
-
    if (c == 'c')
-      PRINT("%s%c%i[", colour[COL_MEM], c, reg.fileIndex);
+      PRINT("%s%c%i[", colour[TXT_MEM], c, reg.fileIndex);
    else
-      PRINT("%s%c[", colour[COL_MEM], c);
+      PRINT("%s%c[", colour[TXT_MEM], c);
 
    if (rel) {
       pos += rel->print(&buf[pos], size - pos);
-      PRINT("%s%c", colour[COL_DEFAULT], (reg.data.offset < 0) ? '-' : '+');
+      PRINT("%s%c", colour[TXT_DEFAULT], (reg.data.offset < 0) ? '-' : '+');
    } else {
       assert(reg.data.offset >= 0);
    }
-   PRINT("%s0x%x%s]", colour[COL_IMM], abs(reg.data.offset), colour[COL_MEM]);
+   PRINT("%s0x%x%s]", colour[TXT_IMMD], abs(reg.data.offset), colour[TXT_MEM]);
 
    return pos;
 }
@@ -222,9 +364,8 @@ void Instruction::print() const
    char buf[BUFSZ];
    int s, d;
    size_t pos = 0;
-   const Target *targ = bb->getProgram()->getTarget();
 
-   PRINT("%s", colour[COL_INSN]);
+   PRINT("%s", colour[TXT_INSN]);
 
    if (join)
       PRINT("join ");
@@ -235,37 +376,37 @@ void Instruction::print() const
          if (cc == CC_NOT_P)
             PRINT("not");
       } else {
-         PRINT("%s", CondCode_str[cc]);
+         PRINT("%s", CondCodeStr[cc]);
       }
       if (pos > pre + 1)
          SPACE();
       pos += src[predSrc].get()->print(&buf[pos], BUFSZ - pos);
-      PRINT(" %s", colour[COL_INSN]);
+      PRINT(" %s", colour[TXT_INSN]);
    }
 
    if (saturate)
       PRINT("sat ");
 
    if (asFlow()) {
-      PRINT("%s", targ->getInfo(this).name);
+      PRINT("%s", operationStr[op]);
       if (op == OP_CALL && asFlow()->target.fn) {
-         PRINT(" %s%s", colour[COL_BRA], asFlow()->target.fn->getName());
+         PRINT(" %s%s", colour[TXT_BRA], asFlow()->target.fn->getName());
       } else
       if (asFlow()->target.bb)
-         PRINT(" %sBB:%i", colour[COL_BRA], asFlow()->target.bb->getId());
+         PRINT(" %sBB:%i", colour[TXT_BRA], asFlow()->target.bb->getId());
    } else {
-      PRINT("%s ", targ->getInfo(this).name);
+      PRINT("%s ", operationStr[op]);
       if (perPatch)
          PRINT("patch ");
       if (asTex())
          PRINT("%s ", asTex()->tex.target.getName());
       if (postFactor)
          PRINT("x2^%i ", postFactor);
-      PRINT("%s%s", dnz ? "dnz " : (ftz ? "ftz " : ""),  DataType_str[dType]);
+      PRINT("%s%s", dnz ? "dnz " : (ftz ? "ftz " : ""),  DataTypeStr[dType]);
    }
 
    if (rnd != ROUND_N)
-      PRINT(" %s", RoundMode_str[rnd]);
+      PRINT(" %s", RoundModeStr[rnd]);
 
    if (def[1].exists())
       PRINT(" {");
@@ -274,16 +415,16 @@ void Instruction::print() const
       pos += def[d].get()->print(&buf[pos], size - pos);
    }
    if (d > 1)
-      PRINT(" %s}", colour[COL_INSN]);
+      PRINT(" %s}", colour[TXT_INSN]);
    else
    if (!d && !asFlow())
-      PRINT(" %s#", colour[COL_INSN]);
+      PRINT(" %s#", colour[TXT_INSN]);
 
    if (asCmp())
-      PRINT(" %s%s", colour[COL_INSN], CondCode_str[asCmp()->setCond]);
+      PRINT(" %s%s", colour[TXT_INSN], CondCodeStr[asCmp()->setCond]);
 
    if (sType != dType)
-      PRINT(" %s", DataType_str[sType]);
+      PRINT(" %s", DataTypeStr[sType]);
 
    for (s = 0; s < NV50_IR_MAX_SRCS && src[s].exists(); ++s) {
       if (s == predSrc || src[s].usedAsPtr)
@@ -300,11 +441,11 @@ void Instruction::print() const
          pos += src[s].get()->print(&buf[pos], BUFSZ - pos, sType);
    }
 
-   PRINT("%s", colour[COL_DEFAULT]);
+   PRINT("%s", colour[TXT_DEFAULT]);
 
    buf[MIN2(pos, BUFSZ - 1)] = 0;
 
-   debug_printf("%s (%u)\n", buf, encSize);
+   INFO("%s (%u)\n", buf, encSize);
 }
 
 class PrintPass : public Pass
@@ -323,7 +464,7 @@ private:
 bool
 PrintPass::visit(Function *fn)
 {
-   debug_printf("\n%s:\n", fn->getName());
+   INFO("\n%s:\n", fn->getName());
 
    return true;
 }
@@ -332,27 +473,27 @@ bool
 PrintPass::visit(BasicBlock *bb)
 {
 #if 0
-   debug_printf("---\n");
+   INFO("---\n");
    for (Graph::EdgeIterator ei = bb->cfg.incident(); !ei.end(); ei.next())
-      debug_printf(" <- BB:%i (%s)\n",
-                   BasicBlock::get(ei.getNode())->getId(),
-                   ei.getEdge()->typeStr());
+      INFO(" <- BB:%i (%s)\n",
+           BasicBlock::get(ei.getNode())->getId(),
+           ei.getEdge()->typeStr());
 #endif
-   debug_printf("BB:%i (%u instructions) - ", bb->getId(), bb->getInsnCount());
+   INFO("BB:%i (%u instructions) - ", bb->getId(), bb->getInsnCount());
 
    if (bb->idom())
-      debug_printf("idom = BB:%i, ", bb->idom()->getId());
+      INFO("idom = BB:%i, ", bb->idom()->getId());
 
-   debug_printf("df = { ");
+   INFO("df = { ");
    for (DLList::Iterator df = bb->getDF().iterator(); !df.end(); df.next())
-      debug_printf("BB:%i ", BasicBlock::get(df)->getId());
+      INFO("BB:%i ", BasicBlock::get(df)->getId());
 
-   debug_printf("}\n");
+   INFO("}\n");
 
    for (Graph::EdgeIterator ei = bb->cfg.outgoing(); !ei.end(); ei.next())
-      debug_printf(" -> BB:%i (%s)\n",
-                   BasicBlock::get(ei.getNode())->getId(),
-                   ei.getEdge()->typeStr());
+      INFO(" -> BB:%i (%s)\n",
+           BasicBlock::get(ei.getNode())->getId(),
+           ei.getEdge()->typeStr());
 
    return true;
 }
@@ -360,8 +501,8 @@ PrintPass::visit(BasicBlock *bb)
 bool
 PrintPass::visit(Instruction *insn)
 {
-   debug_printf("%3i: ", serial++); insn->print();
-
+   INFO("%3i: ", serial++);
+   insn->print();
    return true;
 }
 

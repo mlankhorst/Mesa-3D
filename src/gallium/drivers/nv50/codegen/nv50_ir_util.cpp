@@ -179,10 +179,10 @@ void Interval::print() const
 {
    if (!head)
       return;
-   debug_printf("[%i %i)", head->bgn, head->end);
+   INFO("[%i %i)", head->bgn, head->end);
    for (const Range *r = head->next; r; r = r->next)
-      debug_printf(" [%i %i)", r->bgn, r->end);
-   debug_printf("\n");
+      INFO(" [%i %i)", r->bgn, r->end);
+   INFO("\n");
 }
 
 void
@@ -254,20 +254,20 @@ void BitSet::setOr(BitSet *pA, BitSet *pB)
 void BitSet::print() const
 {
    unsigned int n = 0;
-   debug_printf("BitSet of size %u:\n", size);
+   INFO("BitSet of size %u:\n", size);
    for (unsigned int i = 0; i < (size + 31) / 32; ++i) {
       uint32_t bits = data[i];
       while (bits) {
          int pos = ffs(bits) - 1;
          bits &= ~(1 << pos);
-         debug_printf(" %i", i * 32 + pos);
+         INFO(" %i", i * 32 + pos);
          ++n;
          if ((n % 16) == 0)
-            debug_printf("\n");
+            INFO("\n");
       }
    }
    if (n % 16)
-      debug_printf("\n");
+      INFO("\n");
 }
 
 } // namespace nv50_ir

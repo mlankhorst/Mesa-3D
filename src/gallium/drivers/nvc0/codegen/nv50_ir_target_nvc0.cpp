@@ -3,6 +3,42 @@
 
 namespace nv50_ir {
 
+class TargetNVC0 : public Target
+{
+public:
+   TargetNVC0(unsigned int chipset);
+
+   virtual CodeEmitter *getCodeEmitter(Program::Type);
+
+   virtual bool runLegalizePass(Program *, CGStage stage) const;
+
+   virtual bool insnCanLoad(const Instruction *insn, int s,
+                            const Instruction *ld) const;
+   virtual bool isOpSupported(operation, DataType) const;
+   virtual bool isModSupported(const Instruction *, int s, Modifier) const;
+   virtual bool isSatSupported(const Instruction *) const;
+   virtual bool mayPredicate(const Instruction *, const Value *) const;
+
+   virtual unsigned int getFileSize(DataFile) const;
+   virtual unsigned int getFileUnit(DataFile) const;
+
+   virtual uint32_t getSVAddress(DataFile shaderFile, const Symbol *sv) const;
+
+private:
+   void initOpInfo();
+};
+
+Target *getTargetNVC0(unsigned int chipset)
+{
+   return new TargetNVC0(chipset);
+}
+
+TargetNVC0::TargetNVC0(unsigned int card)
+{
+   chipset = card;
+   initOpInfo();
+}
+
 /* udiv(n, by)
  * {
  *  if (n < by)
@@ -131,37 +167,6 @@ const uint32_t lib_nvc0_rsqrt_f64[] =
    0x00001de7, 0x90000000,
 };
 
-bool Target::shaderExportInPlace(Program::Type ty) const
-{
-   return ty != Program::TYPE_FRAGMENT;
-}
-
-static const char *opInfo_names[OP_LAST + 1] =
-{
-   "nop", "phi", "union", "split", "merge", "consec",          // 00 06
-   "mov", "ld", "st",                                          // 06 03
-   "add", "sub", "mul", "div", "mod", "mad", "fma", "sad",     // 09 08
-   "abs", "neg", "not",                                        // 17 03
-   "and", "or", "xor", "shl", "shr",                           // 20 05
-   "max", "min", "sat",                                        // 25 03
-   "ceil", "floor", "trunc", "cvt",                            // 28 04
-   "set and", "set or", "set xor", "set", "selp", "slct",      // 32 06
-   "rcp", "rsq", "lg2", "sin", "cos", "ex2",                   // 38 06
-   "exp", "log", "presin", "preex2", "sqrt", "pow",            // 44 06
-   "bra", "call", "ret", "cont", "break",                      // 50 05
-   "preret", "precont", "prebreak",                            // 55 03
-   "brkpt", "joinat", "join", "discard", "exit", "barrier",    // 58 06
-   "vfetch", "pfetch", "export", "linterp", "pinterp",         // 64 05
-   "emit", "restart",                                          // 69 02
-   "tex", "texbias", "texlod",                                 // 71 03
-   "texfetch", "texquery", "texgrad", "texgather", "texcsaa",  // 74 05
-   "suld", "sust",                                             // 79 02
-   "dfdx", "dfdy",                                             // 81 02
-   "rdsv", "wrsv", "pixld", "quadop", "quadon", "quadpop",     // 83 06
-   "popcnt", "insbf", "extbf",                                 // 89 03
-   "(INVALID_OP)"                                              // 92
-};
-
 static const uint8_t opInfo_srcNr[OP_LAST + 1] =
 {
    0, 0, 0, 0, 0, 0,
@@ -233,7 +238,7 @@ static const struct opProperties _initProps[] =
    { OP_PINTERP, 0x0, 0x0, 0x0, 0x8, 0x0, 0x0 },
 };
 
-void Target::initOpInfo()
+void TargetNVC0::initOpInfo()
 {
    unsigned int i, j;
 
@@ -257,13 +262,14 @@ void Target::initOpInfo()
       OP_QUADON, OP_QUADPOP
    };
 
+   joinAnterior = false;
+
    for (i = 0; i < DATA_FILE_COUNT; ++i)
-      fileMap[i] = (DataFile)i;
-   fileMap[FILE_ADDRESS] = FILE_GPR;
+      nativeFileMap[i] = (DataFile)i;
+   nativeFileMap[FILE_ADDRESS] = FILE_GPR;
 
    for (i = 0; i < OP_LAST; ++i) {
       opInfo[i].variants = NULL;
-      opInfo[i].name = opInfo_names[i];
       opInfo[i].op = (operation)i;
       opInfo[i].srcTypes = 1 << (int)TYPE_F32;
       opInfo[i].dstTypes = 1 << (int)TYPE_F32;
@@ -311,7 +317,7 @@ void Target::initOpInfo()
 }
 
 unsigned int
-Target::getFileSize(DataFile file) const
+TargetNVC0::getFileSize(DataFile file) const
 {
    switch (file) {
    case FILE_NULL:          return 0;
@@ -334,7 +340,7 @@ Target::getFileSize(DataFile file) const
 }
 
 unsigned int
-Target::getFileUnit(DataFile file) const
+TargetNVC0::getFileUnit(DataFile file) const
 {
    if (file < FILE_MEMORY_CONST || file == FILE_SYSTEM_VALUE)
       return 2;
@@ -342,7 +348,7 @@ Target::getFileUnit(DataFile file) const
 }
 
 uint32_t
-Target::getSVAddress(DataFile shaderFile, const Symbol *sym) const
+TargetNVC0::getSVAddress(DataFile shaderFile, const Symbol *sym) const
 {
    const int idx = sym->reg.data.sv.index;
    const SVSemantic sv = sym->reg.data.sv.sv;
@@ -368,7 +374,8 @@ Target::getSVAddress(DataFile shaderFile, const Symbol *sym) const
 }
 
 bool
-Target::insnCanLoad(const Instruction *i, int s, const Instruction *ld) const
+TargetNVC0::insnCanLoad(const Instruction *i, int s,
+                        const Instruction *ld) const
 {
    DataFile sf = ld->src[0].getFile();
 
@@ -412,7 +419,7 @@ Target::insnCanLoad(const Instruction *i, int s, const Instruction *ld) const
 }
 
 bool
-Target::isOpSupported(operation op, DataType ty) const
+TargetNVC0::isOpSupported(operation op, DataType ty) const
 {
    if ((op == OP_MAD || op == OP_FMA) && (ty != TYPE_F32))
       return false;
@@ -424,13 +431,13 @@ Target::isOpSupported(operation op, DataType ty) const
 }
 
 bool
-Target::isModSupported(const Instruction *insn, int s, Modifier mod) const
+TargetNVC0::isModSupported(const Instruction *insn, int s, Modifier mod) const
 {
    return (mod & Modifier(opInfo[insn->op].srcMods[s])) == mod;
 }
 
 bool
-Target::mayPredicate(const Instruction *insn, const Value *pred) const
+TargetNVC0::mayPredicate(const Instruction *insn, const Value *pred) const
 {
    if (insn->getPredicate())
       return false;
@@ -438,17 +445,17 @@ Target::mayPredicate(const Instruction *insn, const Value *pred) const
 }
 
 bool
-Target::isSatSupported(const Instruction *insn) const
+TargetNVC0::isSatSupported(const Instruction *insn) const
 {
    if (insn->op == OP_CVT)
       return true;
-
-   if (insn->dType == TYPE_U32 && insn->op == OP_ADD)
-      return true;
-
-   if (insn->dType != TYPE_F32)
+   if (!(opInfo[insn->op].dstMods & NV50_IR_MOD_SAT))
       return false;
-   return opInfo[insn->op].dstMods & NV50_IR_MOD_SAT;
+
+   if (insn->dType == TYPE_U32)
+      return (insn->op == OP_ADD) || (insn->op == OP_MAD);
+
+   return insn->dType == TYPE_F32;
 }
 
 } // namespace nv50_ir

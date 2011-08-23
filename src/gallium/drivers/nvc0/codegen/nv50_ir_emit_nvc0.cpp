@@ -1,18 +1,9 @@
 
-#include "nv50/codegen/nv50_ir.h"
-#include "nv50/codegen/nv50_ir_target.h"
+#include "nv50_ir_target_nvc0.h"
 
 namespace nv50_ir {
 
 // Argh, all these assertions ...
-
-void
-CodeEmitter::setCodeLocation(void *ptr, uint32_t size)
-{
-   code = reinterpret_cast<uint32_t *>(ptr);
-   codeSize = 0;
-   maxCodeSize = size;
-}
 
 class CodeEmitterNVC0 : public CodeEmitter
 {
@@ -1611,7 +1602,7 @@ CodeEmitterNVC0::emitInstruction(Instruction *insn)
 uint32_t
 CodeEmitterNVC0::getMinEncodingSize(const Instruction *i) const
 {
-   const Target::OpInfo &info = targ->getInfo(i);
+   const Target::OpInfo &info = targ->getOpInfo(i);
 
    if (info.minEncSize == 8 || 1)
       return 8;
@@ -1674,58 +1665,11 @@ CodeEmitterNVC0::CodeEmitterNVC0(const Target *target) : targ(target)
 }
 
 CodeEmitter *
-Target::getCodeEmitter(Program::Type type)
+TargetNVC0::getCodeEmitter(Program::Type type)
 {
-   CodeEmitterNVC0 *emt = new CodeEmitterNVC0(this);
-   emt->setProgramType(type);
-   return emt;
-}
-
-void
-CodeEmitter::printBinary() const
-{
-   uint32_t *bin = code - codeSize / 4;
-   debug_printf("program binary (%u bytes)", codeSize);
-   for (unsigned int pos = 0; pos < codeSize / 4; ++pos) {
-      if ((pos % 8) == 0)
-         debug_printf("\n");
-      debug_printf("%08x ", bin[pos]);
-   }
-   debug_printf("\n");
-}
-
-bool
-Program::emitBinary(struct nv50_ir_prog_info *info)
-{
-   CodeEmitter *emit = target->getCodeEmitter(progType);
-
-   emit->prepareEmission(this);
-
-   this->print();
-
-   if (!binSize) {
-      code = NULL;
-      return false;
-   }
-   code = reinterpret_cast<uint32_t *>(MALLOC(binSize));
-   if (!code)
-      return false;
-   emit->setCodeLocation(code, binSize);
-
-   for (ArrayList::Iterator fi = allFuncs.iterator(); !fi.end(); fi.next()) {
-      Function *fn = reinterpret_cast<Function *>(fi.get());
-
-      assert(emit->getCodeSize() == fn->binPos);
-
-      for (int b = 0; b < fn->bbCount; ++b)
-         for (Instruction *i = fn->bbArray[b]->getEntry(); i; i = i->next)
-            emit->emitInstruction(i);
-   }
-
-   emit->printBinary();
-
-   delete emit;
-   return true;
+   CodeEmitterNVC0 *emit = new CodeEmitterNVC0(this);
+   emit->setProgramType(type);
+   return emit;
 }
 
 } // namespace nv50_ir
