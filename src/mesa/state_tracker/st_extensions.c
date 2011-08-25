@@ -203,8 +203,11 @@ void st_init_limits(struct st_context *st)
 
    /* XXX we'll need a better query here someday */
    if (screen->get_param(screen, PIPE_CAP_GLSL)) {
-      c->GLSLVersion = 120;
+      c->GLSLVersion = 130;
    }
+   if (screen->get_shader_param(screen, PIPE_SHADER_VERTEX,
+                                PIPE_SHADER_CAP_INTEGERS))
+      c->NativeIntegers = GL_TRUE;
 }
 
 
