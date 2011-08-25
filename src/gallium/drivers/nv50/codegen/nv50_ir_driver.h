@@ -25,6 +25,7 @@ struct nv50_ir_varying
    unsigned patch    : 1; /* patch constant value */
    unsigned regular  : 1; /* normal input/output or special if false */
    unsigned input    : 1; /* indicates direction of system values */
+   unsigned oread    : 1; /* true if output is read from parallel TCP */
 
    ubyte id; /* TGSI register index */
    ubyte sn; /* TGSI semantic name */
