@@ -35,16 +35,65 @@ nvc0_mesa_varying_hack(struct nv50_ir_varying *var)
    if (var->sn != TGSI_SEMANTIC_GENERIC)
       return;
 
-   if (var->si <= 7)
+   if (var->si <= 7) /* gl_TexCoord */
       for (c = 0; c < 4; ++c)
-         var->slot[c] += (0x300 - 0x80) / 4; /* gl_TexCoord */
+         var->slot[c] = (0x300 + var->si * 0x10 + c * 0x4) / 4;
    else
-   if (var->si == 9)
+   if (var->si == 9) /* gl_PointCoord */
       for (c = 0; c < 4; ++c)
-         var->slot[c] = (0x2e0 + c * 0x4) / 4; /* gl_PointCoord */
+         var->slot[c] = (0x2e0 + c * 0x4) / 4;
    else
-      for (c = 0; c < 4; ++c)
-         var->slot[c] -= 0x80; /* move down user varyings */
+      for (c = 0; c < 4; ++c) /* move down user varyings (first has index 8) */
+         var->slot[c] -= 0x80 / 4;
+}
+
+static uint32_t
+nvc0_shader_input_address(unsigned sn, unsigned si, unsigned ubase)
+{
+   switch (sn) {
+/* case TGSI_SEMANTIC_TESSFACTOR:   return 0x000 + si * 0x4; */
+   case TGSI_SEMANTIC_PRIMID:       return 0x060;
+   case TGSI_SEMANTIC_PSIZE:        return 0x06c;
+   case TGSI_SEMANTIC_POSITION:     return 0x070;
+   case TGSI_SEMANTIC_GENERIC:      return ubase + si * 0x10;
+   case TGSI_SEMANTIC_FOG:          return 0x270;
+   case TGSI_SEMANTIC_COLOR:        return 0x280 + si * 0x10;
+   case TGSI_SEMANTIC_BCOLOR:       return 0x2a0 + si * 0x10;
+/* case TGSI_SEMANTIC_CLIP:         return 0x2c0 + si * 0x10; */
+/* case TGSI_SEMANTIC_POINTCOORD:   return 0x2e0; */
+/* case TGSI_SEMANTIC_TESSCOORD:    return ~0; */ /* 0x2f0, but special load */
+   case TGSI_SEMANTIC_INSTANCEID:   return 0x2f8;
+/* case TGSI_SEMANTIC_VERTEXID:     return 0x2fc; */
+/* case TGSI_SEMANTIC_TEXCOORD:     return 0x300 + si * 0x10; */
+   case TGSI_SEMANTIC_FACE:         return 0x3fc;
+/* case TGSI_SEMANTIC_INVOCATIONID: return ~0; */
+   default:
+      assert(!"invalid TGSI input semantic");
+      return ~0;
+   }
+}
+
+static uint32_t
+nvc0_shader_output_address(unsigned sn, unsigned si, unsigned ubase)
+{
+   switch (sn) {
+/* case TGSI_SEMANTIC_TESSFACTOR:    return 0x000 + si * 0x4; */
+   case TGSI_SEMANTIC_PRIMID:        return 0x040;
+/* case TGSI_SEMANTIC_LAYER:         return 0x064; */
+/* case TGSI_SEMANTIC_VIEWPORTINDEX: return 0x068; */
+   case TGSI_SEMANTIC_PSIZE:         return 0x06c;
+   case TGSI_SEMANTIC_POSITION:      return 0x070;
+   case TGSI_SEMANTIC_GENERIC:       return ubase + si * 0x10;
+   case TGSI_SEMANTIC_FOG:           return 0x270;
+   case TGSI_SEMANTIC_COLOR:         return 0x280 + si * 0x10;
+   case TGSI_SEMANTIC_BCOLOR:        return 0x2a0 + si * 0x10;
+/* case TGSI_SEMANTIC_CLIP:          return 0x2c0 + si * 0x10; */
+/* case TGSI_SEMANTIC_TEXCOORD:      return 0x300 + si * 0x10; */
+   case TGSI_SEMANTIC_EDGEFLAG:      return ~0;
+   default:
+      assert(!"invalid TGSI output semantic");
+      return ~0;
+   }
 }
 
 static int
@@ -60,52 +109,18 @@ nvc0_vp_assign_input_slots(struct nv50_ir_prog_info *info)
 }
 
 static int
-nvc0_program_assign_input_slots(struct nv50_ir_prog_info *info)
+nvc0_sp_assign_input_slots(struct nv50_ir_prog_info *info)
 {
-   unsigned base = MAX2(0x80, 0x20 + info->numPatchConstants * 0x10);
+   unsigned ubase = MAX2(0x80, 0x20 + info->numPatchConstants * 0x10);
    unsigned offset;
    unsigned i, c;
 
    for (i = 0; i < info->numInputs; ++i) {
-      switch (info->in[i].sn) {
-      case TGSI_SEMANTIC_GENERIC:
-         offset = (info->in[i].patch ? 0x020 : base) + info->in[i].si * 0x10;
-         break;
-      case TGSI_SEMANTIC_COLOR:
-         offset = 0x280 + info->in[i].si * 0x10;
-         break;
-      case TGSI_SEMANTIC_BCOLOR:
-         offset = 0x2a0 + info->in[i].si * 0x10;
-         break;
-         /*
-      case TGSI_SEMANTIC_TEXCOORD:
-         offset = 0x300 + info->in[i].si * 0x10;
-         break;
-      case TGSI_SEMANTIC_TESSFACTOR:
-         offset = 0x000 + info->in[i].si * 0x4;
-         break;
-         */
+      offset = nvc0_shader_input_address(info->in[i].sn,
+                                         info->in[i].si, ubase);
+      if (info->in[i].patch && offset >= 0x20)
+         offset = 0x20 + info->in[i].si * 0x10;
 
-      /* single semantic index */
-      case TGSI_SEMANTIC_PRIMID:     offset = 0x060; break;
-      case TGSI_SEMANTIC_POSITION:   offset = 0x070; break;
-      case TGSI_SEMANTIC_FOG:        offset = 0x270; break;
-   /* case TGSI_SEMANTIC_POINTCOORD: offset = 0x2e0; break; */
-      case TGSI_SEMANTIC_INSTANCEID: offset = 0x2f8; break;
-   /* case TGSI_SEMANTIC_VERTEXID:   offset = 0x2fc; break; */
-      case TGSI_SEMANTIC_FACE:       offset = 0x3fc; break;
-
-      /* special registers */
-         /*
-      case TGSI_SEMANTIC_INVOCATIONID:
-         info->in[i].regular = 0;
-         continue;
-         */
-
-      default:
-         assert(!"invalid TGSI input semantic");
-         return -1;
-      }
       for (c = 0; c < 4; ++c)
          info->in[i].slot[c] = (offset + c * 0x4) / 4;
 
@@ -136,49 +151,18 @@ nvc0_fp_assign_output_slots(struct nv50_ir_prog_info *info)
 }
 
 static int
-nvc0_program_assign_output_slots(struct nv50_ir_prog_info *info)
+nvc0_sp_assign_output_slots(struct nv50_ir_prog_info *info)
 {
-   unsigned base = MAX2(0x80, 0x20 + info->numPatchConstants * 0x10);
+   unsigned ubase = MAX2(0x80, 0x20 + info->numPatchConstants * 0x10);
    unsigned offset;
    unsigned i, c;
 
    for (i = 0; i < info->numOutputs; ++i) {
-      switch (info->out[i].sn) {
-      case TGSI_SEMANTIC_GENERIC:
-         offset = (info->out[i].patch ? 0x020 : base) + info->out[i].si * 0x10;
-         break;
-      case TGSI_SEMANTIC_COLOR:
-         offset = 0x280 + info->out[i].si * 0x10;
-         break;
-      case TGSI_SEMANTIC_BCOLOR:
-         offset = 0x2a0 + info->out[i].si * 0x10;
-         break;
-         /*
-      case TGSI_SEMANTIC_CLIP:
-         offset = 0x2c0 + info->out[i].si * 0x10;
-         break;
-      case TGSI_SEMANTIC_TEXCOORD:
-         offset = 0x300 + info->out[i].si * 0x10;
-         break;
-      case TGSI_SEMANTIC_TESSFACTOR:
-         offset = 0x000 + info->out[i].si * 0x4;
-         break;
-         */
+      offset = nvc0_shader_output_address(info->out[i].sn,
+                                          info->out[i].si, ubase);
+      if (info->out[i].patch && offset >= 0x20)
+         offset = 0x20 + info->out[i].si * 0x10;
 
-      /* single semantic index */
-      case TGSI_SEMANTIC_PRIMID:        offset = 0x040; break;
-   /* case TGSI_SEMANTIC_LAYER:         offset = 0x064; break; */
-   /* case TGSI_SEMANTIC_VIEWPORTINDEX: offset = 0x068; break; */
-      case TGSI_SEMANTIC_PSIZE:         offset = 0x06c; break;
-      case TGSI_SEMANTIC_POSITION:      offset = 0x070; break;
-      case TGSI_SEMANTIC_FOG:           offset = 0x270; break;
-
-      case TGSI_SEMANTIC_EDGEFLAG:
-         continue; /* doesn't exist */
-      default:
-         assert(!"invalid TGSI output semantic");
-         return -1;
-      }
       for (c = 0; c < 4; ++c)
          info->out[i].slot[c] = (offset + c * 0x4) / 4;
 
@@ -196,15 +180,27 @@ nvc0_program_assign_varying_slots(struct nv50_ir_prog_info *info)
    if (info->type == PIPE_SHADER_VERTEX)
       ret = nvc0_vp_assign_input_slots(info);
    else
-      ret = nvc0_program_assign_input_slots(info);
+      ret = nvc0_sp_assign_input_slots(info);
    if (ret)
       return ret;
 
    if (info->type == PIPE_SHADER_FRAGMENT)
       ret = nvc0_fp_assign_output_slots(info);
    else
-      ret = nvc0_program_assign_output_slots(info);
+      ret = nvc0_sp_assign_output_slots(info);
    return ret;
+}
+
+static INLINE void
+nvc0_vtgp_hdr_update_oread(struct nvc0_program *vp, uint8_t slot)
+{
+   uint8_t min = (vp->hdr[4] >> 12) & 0xff;
+   uint8_t max = (vp->hdr[4] >> 24);
+
+   min = MIN2(min, slot);
+   max = MAX2(max, slot);
+
+   vp->hdr[4] = (max << 24) | (min << 12);
 }
 
 /* Common part of header generation for VP, TCP, TEP and GP. */
@@ -227,11 +223,13 @@ nvc0_vtgp_gen_header(struct nvc0_program *vp, struct nv50_ir_prog_info *info)
       if (info->out[i].patch)
          continue;
       for (c = 0; c < 4; ++c) {
-         a = info->out[i].slot[c];
-         assert(a >= 0x40 / 4);
-         a -= 0x40 / 4;
-         if (info->out[i].mask & (1 << c))
-            vp->hdr[13 + a / 32] |= 1 << (a % 32);
+         if (!(info->out[i].mask & (1 << c)))
+            continue;
+         assert(info->out[i].slot[c] >= 0x40 / 4);
+         a = info->out[i].slot[c] - 0x40 / 4;
+         vp->hdr[13 + a / 32] |= 1 << (a % 32);
+         if (info->out[i].oread)
+            nvc0_vtgp_hdr_update_oread(vp, info->out[i].slot[c]);
       }
    }
 
@@ -324,7 +322,7 @@ nvc0_tcp_gen_header(struct nvc0_program *tcp, struct nv50_ir_prog_info *info)
    tcp->hdr[1] = opcs << 24;
    tcp->hdr[2] = info->prop.tp.outputPatchSize << 24;
 
-   tcp->hdr[4] = 0xff000; /* 0x23020000 if an output is read (?) */
+   tcp->hdr[4] = 0xff000; /* initial min/max parallel output read address */
 
    nvc0_vtgp_gen_header(tcp, info);
 
@@ -339,8 +337,6 @@ static int
 nvc0_tep_gen_header(struct nvc0_program *tep, struct nv50_ir_prog_info *info)
 {
    tep->hdr[0] = 0x20061 | (3 << 10);
-
-   /* 0xbd0bc000/bc0bc000/bd0bd000 if TessCoord xy/x/y are read (?) */
    tep->hdr[4] = 0xff000;
 
    nvc0_vtgp_gen_header(tep, info);
