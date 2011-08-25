@@ -662,6 +662,7 @@ public:
    unsigned ipa        : 4; // interpolation mode
    unsigned lanes      : 4;
    unsigned perPatch   : 1;
+   unsigned exit       : 1; // terminate program after insn
 
    const unsigned extended : 1; // true for sub-classes of Instruction
 

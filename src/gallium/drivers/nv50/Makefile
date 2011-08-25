@@ -31,6 +31,7 @@ CPP_SOURCES = \
 	codegen/nv50_ir.cpp \
 	codegen/nv50_ir_bb.cpp \
 	codegen/nv50_ir_build_util.cpp \
+	codegen/nv50_ir_emit_nv50.cpp \
 	codegen/nv50_ir_from_tgsi.cpp \
 	codegen/nv50_ir_graph.cpp \
 	codegen/nv50_ir_peephole.cpp \
