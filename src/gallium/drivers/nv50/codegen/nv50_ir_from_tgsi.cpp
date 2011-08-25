@@ -9,6 +9,8 @@ extern "C" {
 
 namespace tgsi {
 
+class Source;
+
 static nv50_ir::operation translateOpcode(uint opcode);
 static nv50_ir::DataFile translateFile(uint file);
 static nv50_ir::TexTarget translateTexture(uint texTarg);
@@ -136,11 +138,9 @@ public:
 
    nv50_ir::CondCode getSetCond() const;
 
-   nv50_ir::TexInstruction::Target getTexture() const
-   {
-      return nv50_ir::TexInstruction::Target(
-         translateTexture(insn->Texture.Texture));
-   }
+   nv50_ir::TexInstruction::Target getTexture(const Source *, int s) const;
+
+   inline uint getLabel() { return insn->Label.Label; }
 
    unsigned getSaturate() const { return insn->Instruction.Saturate; }
 
@@ -333,6 +333,9 @@ nv50_ir::DataType Instruction::inferDstType() const
    switch (getOpcode()) {
    case TGSI_OPCODE_F2U: return nv50_ir::TYPE_U32;
    case TGSI_OPCODE_F2I: return nv50_ir::TYPE_S32;
+   case TGSI_OPCODE_I2F:
+   case TGSI_OPCODE_U2F:
+      return nv50_ir::TYPE_F32;
    default:
       return inferSrcType();
    }
@@ -513,6 +516,9 @@ public:
    const struct tgsi_token *tokens;
    struct nv50_ir_prog_info *info;
 
+   uint8_t *resourceTargets; // TGSI_TEXTURE_*
+   unsigned int resourceCount;
+
 private:
    int inferSysValDirection(unsigned sn) const;
    bool scanDeclaration(const struct tgsi_full_declaration *);
@@ -538,6 +544,9 @@ Source::~Source()
       FREE(info->immd.data);
    if (info->immd.type)
       FREE(info->immd.type);
+
+   if (resourceTargets)
+      FREE(resourceTargets);
 }
 
 bool Source::scanSource()
@@ -551,6 +560,9 @@ bool Source::scanSource()
                                                   sizeof(insns[0]));
    if (!insns)
       return false;
+
+   resourceCount = scan.file_max[TGSI_FILE_RESOURCE] + 1;
+   resourceTargets = (uint8_t *)MALLOC(resourceCount);
 
    info->numInputs = scan.file_max[TGSI_FILE_INPUT] + 1;
    info->numOutputs = scan.file_max[TGSI_FILE_OUTPUT] + 1;
@@ -722,12 +734,15 @@ bool Source::scanDeclaration(const struct tgsi_full_declaration *decl)
    case TGSI_FILE_TEMPORARY:
       info->bin.tlsSize = MAX2(info->bin.tlsSize, (last + 1) * 16);
       break;
+   case TGSI_FILE_RESOURCE:
+      for (i = first; i <= last; ++i)
+         resourceTargets[i] = decl->Resource.Resource;
+      break;
    case TGSI_FILE_NULL:
    case TGSI_FILE_ADDRESS:
    case TGSI_FILE_CONSTANT:
    case TGSI_FILE_IMMEDIATE:
    case TGSI_FILE_PREDICATE:
-   case TGSI_FILE_RESOURCE:
    case TGSI_FILE_SAMPLER:
    // case TGSI_FILE_TEMPORARY_ARRAY: // TODO
    // case TGSI_FILE_IMMEDIATE_ARRAY: // TODO
@@ -794,6 +809,19 @@ bool Source::scanInstruction(const struct tgsi_full_instruction *inst)
    return true;
 }
 
+nv50_ir::TexInstruction::Target
+Instruction::getTexture(const tgsi::Source *code, int s) const
+{
+   if (insn->Instruction.Texture) {
+      return translateTexture(insn->Texture.Texture);
+   } else {
+      // XXX: indirect access
+      unsigned int r = getSrc(s).getIndex(0);
+      assert(r < code->resourceCount);
+      return translateTexture(code->resourceTargets[r]);
+   }
+}
+
 } // namespace tgsi
 
 namespace {
@@ -809,6 +837,7 @@ public:
    bool run();
 
 private:
+   uint32_t fetchImm32(int s, int c);
    Value *fetchSrc(int s, int c);
    Value *acquireDst(int d, int c);
    void storeDst(int d, int c, Value *val);
@@ -825,11 +854,14 @@ private:
 
    bool handleInstruction(const struct tgsi_full_instruction *);
    void exportOutputs();
+   inline bool isEndOfSubroutine(uint ip);
 
    void loadProjTexCoords(Value *dst[4], Value *src[4], unsigned int mask);
 
    // R,S,L,C,Dx,Dy encode TGSI sources for respective values (0xSf for auto)
+   void setTexRS(TexInstruction *, unsigned int& s, int R, int S);
    void handleTEX(Value *dst0[4], int R, int S, int L, int C, int Dx, int Dy);
+   void handleTXF(Value *dst0[4], int R);
    void handleTXQ(Value *dst0[4], enum TexQuery);
    void handleLIT(Value *dst0[4]);
    void handleUserClipPlanes();
@@ -841,6 +873,8 @@ private:
 private:
    const struct tgsi::Source *code;
    const struct nv50_ir_prog_info *info;
+
+   uint ip; // instruction pointer
 
    tgsi::Instruction tgsi;
 
@@ -856,16 +890,13 @@ private:
    Value *fragCoord[4];
    Value *clipVtx[4];
 
-   Stack condBBs;
-   Stack joins;
-   Stack loopBBs;
-   Stack breakBBs;
-
-   BasicBlock *exitBB;
-
-   Graph::Edge::Type cfKind;
-
-   uint32_t outputsWritten[(PIPE_MAX_SHADER_OUTPUTS + 7) / 8];
+   Stack condBBs;  // fork BB, then else clause BB
+   Stack joins;    // join target instructions (in fork BB)
+   Stack loopBBs;  // loop headers
+   Stack breakBBs; // end of / after loop
+   Stack entryBBs; // start of current (inlined) subroutine
+   Stack leaveBBs; // end of current (inlined) subroutine
+   Stack retIPs;   // return instruction pointer
 };
 
 Symbol *
@@ -961,6 +992,14 @@ Converter::applySrcMod(Value *val, int s, int c)
       val = mkOp1v(OP_NEG, ty, getScratch(), val);
 
    return val;
+}
+
+uint32_t
+Converter::fetchImm32(int s, int c)
+{
+   tgsi::Instruction::SrcRegister src = tgsi.getSrc(s);
+   assert(src.getFile() == TGSI_FILE_IMMEDIATE);
+   return info->immd.data[src.getIndex(0) * 4 + src.getSwizzle(c)];
 }
 
 Value *
@@ -1150,23 +1189,43 @@ Converter::buildDot(int dim)
 }
 
 void
+Converter::setTexRS(TexInstruction *tex, unsigned int& s, int R, int S)
+{
+   unsigned rIdx = 0, sIdx = 0;
+
+   if (R >= 0)
+      rIdx = tgsi.getSrc(R).getIndex(0);
+   if (S >= 0)
+      sIdx = tgsi.getSrc(S).getIndex(0);
+
+   tex->setTexture(tgsi.getTexture(code, R), rIdx, sIdx);
+
+   if (tgsi.getSrc(R).isIndirect(0)) {
+      tex->tex.rIndirectSrc = s;
+      tex->setSrc(s++, fetchSrc(tgsi.getSrc(R).getIndirect(0), 0, NULL));
+   }
+   if (S >= 0 && tgsi.getSrc(S).isIndirect(0)) {
+      tex->tex.sIndirectSrc = s;
+      tex->setSrc(s++, fetchSrc(tgsi.getSrc(S).getIndirect(0), 0, NULL));
+   }
+}
+
+void
 Converter::handleTXQ(Value *dst0[4], enum TexQuery query)
 {
    TexInstruction *tex = new TexInstruction(func, OP_TXQ);
    tex->tex.query = query;
+   unsigned int c, d;
 
-   for (int d = 0, c = 0; c < 4; ++c) {
+   for (d = 0, c = 0; c < 4; ++c) {
       if (!dst0[c])
          continue;
       tex->tex.mask |= 1 << c;
       tex->setDef(d++, dst0[c]);
    }
-   tex->setSrc(0, fetchSrc(0, 0)); // mip level
+   tex->setSrc((c = 0), fetchSrc(0, 0)); // mip level
 
-   tex->setTexture(tgsi.getTexture(), tgsi.getSrc(1).getIndex(0), 0);
-   if (tgsi.getSrc(0).isIndirect(0))
-      tex->setSrc((tex->tex.rIndirectSrc = 1),
-                  fetchSrc(tgsi.getSrc(1).getIndirect(0), 0, NULL));
+   setTexRS(tex, c, 1, -1);
 }
 
 void
@@ -1218,7 +1277,7 @@ Converter::handleTEX(Value *dst[4], int R, int S, int L, int C, int Dx, int Dy)
    unsigned int s, c, d;
    TexInstruction *texi = new TexInstruction(func, tgsi.getOP());
 
-   TexInstruction::Target tgt = tgsi.getTexture();
+   TexInstruction::Target tgt = tgsi.getTexture(code, R);
 
    for (s = 0; s < tgt.getArgCount(); ++s)
       arg[s] = src[s] = fetchSrc(0, s);
@@ -1278,21 +1337,41 @@ Converter::handleTEX(Value *dst[4], int R, int S, int L, int C, int Dx, int Dy)
    if (shd)
       texi->setSrc(s++, shd);
 
-   texi->setTexture(tgt,
-                    tgsi.getSrc(R).getIndex(0), tgsi.getSrc(S).getIndex(0));
-
-   if (tgsi.getSrc(R).isIndirect(0))
-      texi->setSrc((texi->tex.rIndirectSrc = s++),
-                   fetchSrc(tgsi.getSrc(R).getIndirect(0), 0, NULL));
-
-   if (tgsi.getSrc(S).isIndirect(0))
-      texi->setSrc((texi->tex.sIndirectSrc = s++),
-                   fetchSrc(tgsi.getSrc(S).getIndirect(0), 0, NULL));
+   setTexRS(texi, s, R, S);
 
    if (tgsi.getOpcode() == TGSI_OPCODE_SAMPLE_C_LZ)
       texi->tex.levelZero = true;
 
    bb->insertTail(texi);
+}
+
+// 1st source: xyz = coordinates, w = lod
+// 2nd source: offset
+void
+Converter::handleTXF(Value *dst[4], int R)
+{
+   TexInstruction *texi = new TexInstruction(func, tgsi.getOP());
+   unsigned int c, d;
+
+   texi->tex.target = tgsi.getTexture(code, R);
+
+   for (c = 0, d = 0; c < 4; ++c) {
+      if (dst[c]) {
+         texi->setDef(d++, dst[c]);
+         texi->tex.mask |= 1 << c;
+      }
+   }
+   for (c = 0; c < texi->tex.target.getArgCount(); ++c)
+      texi->setSrc(c, fetchSrc(0, c));
+   texi->setSrc(c++, fetchSrc(0, 3)); // lod
+
+   setTexRS(texi, c, R, -1);
+
+   for (c = 0; c < 3; ++c) {
+      texi->tex.offset[0][c] = fetchImm32(1, c);
+      if (texi->tex.offset[0][c])
+         texi->tex.useOffsets = 1;
+   }
 }
 
 void
@@ -1328,6 +1407,17 @@ Converter::handleLIT(Value *dst0[4])
 
       mkCmp(OP_SLCT, CC_GT, TYPE_F32, dst0[2], val3, zero, val0);
    }
+}
+
+bool
+Converter::isEndOfSubroutine(uint ip)
+{
+   assert(ip < code->scan.num_instructions);
+   tgsi::Instruction insn(&code->insns[ip]);
+   return (insn.getOpcode() == TGSI_OPCODE_END ||
+           insn.getOpcode() == TGSI_OPCODE_ENDSUB ||
+           // does END occur at end of main or the very end ?
+           insn.getOpcode() == TGSI_OPCODE_BGNSUB);
 }
 
 bool
@@ -1639,11 +1729,12 @@ Converter::handleInstruction(const struct tgsi_full_instruction *insn)
       handleTEX(dst0, 1, 2, 0x30, 0x31, 0x40, 0x50);
       break;
    case TGSI_OPCODE_TXF:
+      handleTXF(dst0, 2);
+      break;
    case TGSI_OPCODE_LOAD:
+      handleTXF(dst0, 1);
       break;
    case TGSI_OPCODE_TXQ:
-      // XXX: unspecified behaviour
-      break;
    case TGSI_OPCODE_RESINFO:
       handleTXQ(dst0, TXQ_DIMS);
       break;
@@ -1767,24 +1858,66 @@ Converter::handleInstruction(const struct tgsi_full_instruction *insn)
       mkFlow(OP_CONT, contBB, CC_ALWAYS, NULL);
    }
       break;
-   case TGSI_OPCODE_RET:
-      mkFlow(OP_RET, NULL, CC_ALWAYS, NULL)->fixed = 1; // main only for now
-      break;
-   case TGSI_OPCODE_CAL:
    case TGSI_OPCODE_BGNSUB:
+   {
+      if (!retIPs.getSize()) {
+         // end of main function
+         ip = code->scan.num_instructions;
+         return true;
+      }
+      BasicBlock *entry = new BasicBlock(func);
+      BasicBlock *leave = new BasicBlock(func);
+      entryBBs.push(entry);
+      leaveBBs.push(leave);
+      bb->cfg.attach(&entry->cfg, Graph::Edge::TREE);
+      setPosition(entry, true);
+   }
+      return true;
    case TGSI_OPCODE_ENDSUB:
-      assert(!"idiotic calling convention not supported");
+   {
+      BasicBlock *leave = reinterpret_cast<BasicBlock *>(leaveBBs.pop().u.p);
+      entryBBs.pop();
+      bb->cfg.attach(&leave->cfg, Graph::Edge::TREE);
+      setPosition(leave, true);
+      ip = retIPs.pop().u.u;
+   }
+      return true;
+   case TGSI_OPCODE_CAL:
+      // we don't have function declarations, so inline everything
+      retIPs.push(ip);
+      ip = tgsi.getLabel() - 1; // ip is incremented after return
+      return true;
+   case TGSI_OPCODE_RET:
+   {
+      if (bb->isTerminated())
+         return true;
+      BasicBlock *entry = reinterpret_cast<BasicBlock *>(entryBBs.peek().u.p);
+      BasicBlock *leave = reinterpret_cast<BasicBlock *>(leaveBBs.peek().u.p);
+      if (!isEndOfSubroutine(ip + 1)) {
+         // insert a PRERET at the entry if this is an early return
+         FlowInstruction *preRet = new FlowInstruction(func, OP_PRERET, leave);
+         preRet->fixed = 1;
+         entry->insertHead(preRet);
+         bb->cfg.attach(&leave->cfg, Graph::Edge::CROSS);
+      }
+      // everything inlined so RET serves only to wrap up the stack
+      if (entry->getEntry()->op == OP_PRERET)
+         mkFlow(OP_RET, NULL, CC_ALWAYS, NULL)->fixed = 1;
+   }
       break;
    case TGSI_OPCODE_END:
+   {
+      // attach and generate epilogue code
+      BasicBlock *epilogue = reinterpret_cast<BasicBlock *>(leaveBBs.pop().u.p);
+      entryBBs.pop();
+      bb->cfg.attach(&epilogue->cfg, Graph::Edge::TREE);
+      setPosition(epilogue, true);
       if (prog->getType() == Program::TYPE_FRAGMENT)
          exportOutputs();
-      if (exitBB) {
-         bb->cfg.attach(&exitBB->cfg, Graph::Edge::TREE);
-         setPosition(exitBB, true);
-      }
       if (info->io.clipDistanceCount)
          handleUserClipPlanes();
       mkOp(OP_EXIT, TYPE_NONE, NULL)->terminator = 1;
+   }
       break;
    case TGSI_OPCODE_SWITCH:
    case TGSI_OPCODE_CASE:
@@ -1855,8 +1988,6 @@ Converter::Converter(Program *ir, const tgsi::Source *src)
    prog = ir;
    info = code->info;
 
-   memset(outputsWritten, 0, sizeof(outputsWritten));
-
    DataFile tFile = info->requireTLS ? FILE_MEMORY_LOCAL : FILE_GPR;
 
    tData.setup(0, code->fileSize(TGSI_FILE_TEMPORARY), 4, 4, tFile);
@@ -1875,17 +2006,16 @@ Converter::~Converter()
 bool
 Converter::run()
 {
-   prog->main->setEntry(new BasicBlock(prog->main));
+   BasicBlock *entry = new BasicBlock(prog->main);
+   BasicBlock *leave = new BasicBlock(prog->main);
 
-   exitBB = NULL;
+   prog->main->setEntry(entry);
 
-   setPosition(BasicBlock::get(prog->main->cfg.getRoot()), true);
+   setPosition(entry, true);
+   entryBBs.push(entry);
+   leaveBBs.push(leave);
 
    if (info->io.clipDistanceCount) {
-      if (code->scan.opcode_count[TGSI_OPCODE_RET]) {
-         exitBB = new BasicBlock(prog->main);
-         mkFlow(OP_PRERET, exitBB, CC_ALWAYS, NULL);
-      }
       for (int c = 0; c < 4; ++c)
          clipVtx[c] = getScratch();
    }
@@ -1896,7 +2026,7 @@ Converter::run()
       mkOp1(OP_RCP, TYPE_F32, fragCoord[3], fragCoord[3]);
    }
 
-   for (uint ip = 0; ip < code->scan.num_instructions; ++ip)
+   for (ip = 0; ip < code->scan.num_instructions; ++ip)
       if (!handleInstruction(&code->insns[ip]))
          return false;
    return true;

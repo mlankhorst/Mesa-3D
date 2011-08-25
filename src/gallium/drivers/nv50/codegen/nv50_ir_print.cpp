@@ -424,7 +424,7 @@ void Instruction::print() const
       PRINT(" %s%s", colour[TXT_INSN], CondCodeStr[asCmp()->setCond]);
 
    if (sType != dType)
-      PRINT(" %s", DataTypeStr[sType]);
+      PRINT(" %s%s", colour[TXT_INSN], DataTypeStr[sType]);
 
    for (s = 0; s < NV50_IR_MAX_SRCS && src[s].exists(); ++s) {
       if (s == predSrc || src[s].usedAsPtr)

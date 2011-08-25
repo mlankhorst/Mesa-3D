@@ -321,6 +321,10 @@ Converter::inferDstType(enum sm4_opcode op) const
       return TYPE_F64;
    case SM4_OPCODE_F32TOF16:
       return TYPE_F16;
+   case SM4_OPCODE_ITOF:
+   case SM4_OPCODE_UTOF:
+   case SM4_OPCODE_DTOF:
+      return TYPE_F32;
    default:
       return inferSrcType(op);
    }

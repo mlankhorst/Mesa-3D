@@ -200,11 +200,11 @@ NVC0LoweringPass::handleTEX(TexInstruction *i)
 
       if (ticRel) {
          i->setSrc(i->tex.rIndirectSrc, NULL);
-         bld.mkOp3(OP_INSBF, TYPE_U32, src, ticRel, bld.mkImm(0x0810), src);
+         bld.mkOp3(OP_INSBF, TYPE_U32, src, ticRel, bld.mkImm(0x0917), src);
       }
       if (tscRel) {
          i->setSrc(i->tex.sIndirectSrc, NULL);
-         bld.mkOp3(OP_INSBF, TYPE_U32, src, tscRel, bld.mkImm(0x0818), src);
+         bld.mkOp3(OP_INSBF, TYPE_U32, src, tscRel, bld.mkImm(0x0710), src);
       }
 
       i->setSrc(0, src);

@@ -59,8 +59,8 @@ enum operation
    OP_SIN,
    OP_COS,
    OP_EX2,
-   OP_EXP,
-   OP_LOG, // ln(src0) / ln(src1)
+   OP_EXP, // exponential (base M_E)
+   OP_LOG, // natural logarithm
    OP_PRESIN,
    OP_PREEX2,
    OP_SQRT,
