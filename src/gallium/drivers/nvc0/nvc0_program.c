@@ -450,6 +450,9 @@ nvc0_fp_gen_header(struct nvc0_program *fp, struct nv50_ir_prog_info *info)
    return 0;
 }
 
+#undef  NV50_DEBUG
+#define NV50_DEBUG ~0
+
 #if NV50_DEBUG & NV50_DEBUG_SHADER
 static void
 nvc0_program_dump(struct nvc0_program *prog)
@@ -466,6 +469,7 @@ nvc0_program_dump(struct nvc0_program *prog)
          debug_printf("\n");
       debug_printf("%08x ", prog->code[pos]);
    }
+   debug_printf("\n");
 }
 #endif
 
@@ -495,6 +499,7 @@ nvc0_program_translate(struct nvc0_program *prog)
 
    prog->code = info->bin.code;
    prog->code_size = info->bin.codeSize;
+   prog->relocs = info->bin.relocData;
    prog->immd32 = info->immd.buffer;
    prog->immd32_nr = info->immd.bufferSize / 4;
    prog->max_gpr = MAX2(4, (info->bin.maxGPR + 1));
@@ -537,13 +542,76 @@ nvc0_program_translate(struct nvc0_program *prog)
    if (info->globalStoresEnabled)
       prog->hdr[0] |= 1 << 16;
 
+out:
+   FREE(info);
+   return !ret;
+}
+
+boolean
+nvc0_program_upload_code(struct nvc0_context *nvc0, struct nvc0_program *prog)
+{
+   struct nvc0_screen *screen = nvc0->screen;
+   int ret;
+   uint32_t size;
+   uint32_t lib_pos = screen->lib_code->start;
+   uint32_t code_pos;
+
+   size = align(prog->code_size + NVC0_SHADER_HEADER_SIZE, 0x100);
+
+   ret = nouveau_resource_alloc(screen->text_heap, size, prog, &prog->res);
+   if (ret) {
+      NOUVEAU_ERR("out of code space\n");
+      return FALSE;
+   }
+   prog->code_base = prog->res->start;
+
+   code_pos = prog->code_base + NVC0_SHADER_HEADER_SIZE;
+
+   if (prog->relocs)
+      nv50_ir_relocate_code(prog->relocs, prog->code, code_pos, lib_pos, 0);
+
 #if NV50_DEBUG & NV50_DEBUG_SHADER
    nvc0_program_dump(prog);
 #endif
 
-out:
-   FREE(info);
-   return !ret;
+   nvc0_m2mf_push_linear(&nvc0->base, screen->text,
+                         prog->code_base,
+                         NOUVEAU_BO_VRAM, NVC0_SHADER_HEADER_SIZE, prog->hdr);
+   nvc0_m2mf_push_linear(&nvc0->base, screen->text,
+                         prog->code_base + NVC0_SHADER_HEADER_SIZE,
+                         NOUVEAU_BO_VRAM, prog->code_size, prog->code);
+
+   BEGIN_RING(screen->base.channel, RING_3D(MEM_BARRIER), 1);
+   OUT_RING  (screen->base.channel, 0x1111);
+
+   return TRUE;
+}
+
+/* Upload code for builtin functions like integer division emulation. */
+void
+nvc0_program_library_upload(struct nvc0_context *nvc0)
+{
+   struct nvc0_screen *screen = nvc0->screen;
+   int ret;
+   uint32_t size;
+   const uint32_t *code;
+
+   if (screen->lib_code)
+      return;
+
+   nv50_ir_get_target_library(screen->base.device->chipset, &code, &size);
+   if (!size)
+      return;
+
+   ret = nouveau_resource_alloc(screen->text_heap, align(size, 0x100), NULL,
+                                &screen->lib_code);
+   if (ret)
+      return;
+
+   nvc0_m2mf_push_linear(&nvc0->base,
+                         screen->text, screen->lib_code->start, NOUVEAU_BO_VRAM,
+                         size, code);
+   /* no need for a memory barrier, will be emitted with first program */
 }
 
 void

@@ -215,6 +215,7 @@ nvc0_screen_destroy(struct pipe_screen *pscreen)
    nouveau_bo_ref(NULL, &screen->fence.bo);
    nouveau_bo_ref(NULL, &screen->vfetch_cache);
 
+   nouveau_resource_destroy(&screen->lib_code);
    nouveau_resource_destroy(&screen->text_heap);
 
    if (screen->tic.entries)
