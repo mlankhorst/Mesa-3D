@@ -519,8 +519,16 @@ void Instruction::init()
    cache = CACHE_CA;
    subOp = 0;
 
-   saturate = join = ftz = dnz = restart = atomic = perPatch = 0;
-   fixed = terminator = encSize = ipa = 0;
+   saturate = 0;
+   join = terminator = 0;
+   ftz = dnz = 0;
+   restart = 0;
+   atomic = 0;
+   perPatch = 0;
+   fixed = 0;
+   encSize = 0;
+   ipa = 0;
+
    lanes = 0xf;
 
    postFactor = 0;
@@ -782,9 +790,13 @@ FlowInstruction::FlowInstruction(Function *fn, operation op,
 {
    target.bb = targ;
 
-   if (op == OP_BRA || op == OP_CONT || op == OP_BREAK ||
-       (op == OP_JOIN && targ))
+   if (op == OP_BRA ||
+       op == OP_CONT || op == OP_BREAK ||
+       op == OP_RET || op == OP_EXIT)
       terminator = 1;
+   else
+   if (op == OP_JOIN)
+      terminator = targ ? 1 : 0;
 
    allWarp = absolute = limit = 0;
 }
@@ -897,9 +909,10 @@ nv50_ir_generate_code(struct nv50_ir_prog_info *info)
    prog->print();
 
    prog->convertToSSA();
-   prog->getTarget()->runLegalizePass(prog, nv50_ir::CG_STAGE_SSA);
    prog->print();
    prog->optimizeSSA(1);
+   prog->getTarget()->runLegalizePass(prog, nv50_ir::CG_STAGE_SSA);
+   prog->print();
 
    if (!prog->registerAllocation()) {
       ret = -4;

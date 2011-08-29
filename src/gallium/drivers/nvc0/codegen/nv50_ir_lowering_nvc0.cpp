@@ -15,6 +15,85 @@ namespace nv50_ir {
    ((QOP_##q << 0) | (QOP_##r << 2) |           \
     (QOP_##s << 4) | (QOP_##t << 6))
 
+class NVC0LegalizeSSA : public Pass
+{
+private:
+   virtual bool visit(BasicBlock *);
+   virtual bool visit(Function *);
+
+   // we want to insert calls to the builtin library only after optimization
+   void handleDIV(Instruction *); // integer division, modulus
+   void handleRCPRSQ(Instruction *); // double precision float recip/rsqrt
+
+private:
+   BuildUtil bld;
+};
+
+void
+NVC0LegalizeSSA::handleDIV(Instruction *i)
+{
+   FlowInstruction *call;
+   int builtin;
+   Value *def[2];
+
+   bld.setPosition(i, false);
+   def[0] = bld.mkMovToReg(0, i->getSrc(0))->getDef(0);
+   def[1] = bld.mkMovToReg(1, i->getSrc(1))->getDef(1);
+   switch (i->dType) {
+   case TYPE_U32: builtin = NVC0_BUILTIN_DIV_U32; break;
+   case TYPE_S32: builtin = NVC0_BUILTIN_DIV_S32; break;
+   default:
+      return;
+   }
+   call = bld.mkFlow(OP_CALL, NULL, CC_ALWAYS, NULL);
+   bld.mkMov(i->getDef(0), def[(i->op == OP_DIV) ? 0 : 1]);
+   bld.mkClobber(FILE_GPR, (i->op == OP_DIV) ? 0xe : 0xd, 2);
+   bld.mkClobber(FILE_PREDICATE, (i->dType == TYPE_S32) ? 0xf : 0x3, 0);
+
+   call->fixed = 1;
+   call->absolute = call->builtin = 1;
+   call->target.builtin = builtin;
+   Del_Instruction(prog, i);
+}
+
+void
+NVC0LegalizeSSA::handleRCPRSQ(Instruction *i)
+{
+   // TODO
+}
+
+bool
+NVC0LegalizeSSA::visit(Function *fn)
+{
+   bld.setProgram(fn->getProgram());
+   return true;
+}
+
+bool
+NVC0LegalizeSSA::visit(BasicBlock *bb)
+{
+   Instruction *next;
+   for (Instruction *i = bb->getEntry(); i; i = next) {
+      next = i->next;
+      if (i->dType == TYPE_F32)
+         continue;
+      switch (i->op) {
+      case OP_DIV:
+      case OP_MOD:
+         handleDIV(i);
+         break;
+      case OP_RCP:
+      case OP_RSQ:
+         if (i->dType == TYPE_F64)
+            handleRCPRSQ(i);
+         break;
+      default:
+         break;
+      }
+   }
+   return true;
+}
+
 class NVC0LegalizePostRA : public Pass
 {
 private:
@@ -183,7 +262,7 @@ NVC0LoweringPass::handleTEX(TexInstruction *i)
 
    // generate and move the tsc/tic/array source to the front
    if (dim != arg || i->tex.rIndirectSrc >= 0 || i->tex.sIndirectSrc >= 0) {
-      LValue *src = New_LValue(func, FILE_GPR); // 0xssttaaaa
+      LValue *src = New_LValue(func, FILE_GPR); // 0xttxsaaaa
 
       Value *arrayIndex = i->tex.target.isArray() ? i->getSrc(dim) : NULL;
       for (int s = dim; s >= 1; --s)
@@ -392,41 +471,26 @@ NVC0LoweringPass::handleRDSV(Instruction *i)
 bool
 NVC0LoweringPass::handleDIV(Instruction *i)
 {
-   if (i->dType == TYPE_F32) {
-      Instruction *rcp = bld.mkOp1(OP_RCP, TYPE_F32,
-                                   bld.getSSA(), i->getSrc(1));
-      i->op = OP_MUL;
-      i->setSrc(1, rcp->getDef(0));
-   } else
-   if (i->dType == TYPE_U32) {
-      bld.mkMovToReg(0, i->getSrc(0));
-      bld.mkMovToReg(1, i->getSrc(1));
-      bld.mkFlow(OP_CALL, NULL, CC_ALWAYS, NULL);
-      bld.mkMovFromReg(i->getDef(0), 0);
-   }
-
+   if (!isFloatType(i->dType))
+      return true;
+   Instruction *rcp = bld.mkOp1(OP_RCP, i->dType, bld.getSSA(), i->getSrc(1));
+   i->op = OP_MUL;
+   i->setSrc(1, rcp->getDef(0));
    return true;
 }
 
 bool
 NVC0LoweringPass::handleMOD(Instruction *i)
 {
-   if (i->dType == TYPE_F32) {
-      LValue *value = bld.getScratch();
-      bld.mkOp1(OP_RCP, TYPE_F32, value, i->getSrc(1));
-      bld.mkOp2(OP_MUL, TYPE_F32, value, i->getSrc(0), value);
-      bld.mkOp1(OP_TRUNC, TYPE_F32, value, value);
-      bld.mkOp2(OP_MUL, TYPE_F32, value, i->getSrc(1), value);
-      i->op = OP_SUB;
-      i->setSrc(1, value);
-   } else
-   if (i->dType == TYPE_U32) {
-      bld.mkMovToReg(0, i->getSrc(0));
-      bld.mkMovToReg(1, i->getSrc(1));
-      bld.mkFlow(OP_CALL, NULL, CC_ALWAYS, NULL);
-      bld.mkMovFromReg(i->getDef(0), 0);
-   }
-
+   if (i->dType != TYPE_F32)
+      return true;
+   LValue *value = bld.getScratch();
+   bld.mkOp1(OP_RCP, TYPE_F32, value, i->getSrc(1));
+   bld.mkOp2(OP_MUL, TYPE_F32, value, i->getSrc(0), value);
+   bld.mkOp1(OP_TRUNC, TYPE_F32, value, value);
+   bld.mkOp2(OP_MUL, TYPE_F32, value, i->getSrc(1), value);
+   i->op = OP_SUB;
+   i->setSrc(1, value);
    return true;
 }
 
@@ -578,9 +642,12 @@ TargetNVC0::runLegalizePass(Program *prog, CGStage stage) const
    if (stage == CG_STAGE_POST_RA) {
       NVC0LegalizePostRA pass;
       return pass.run(prog, false, true);
-   } else {
-      return true;
+   } else
+   if (stage == CG_STAGE_SSA) {
+      NVC0LegalizeSSA pass;
+      return pass.run(prog, false, true);
    }
+   return false;
 }
 
 } // namespace nv50_ir

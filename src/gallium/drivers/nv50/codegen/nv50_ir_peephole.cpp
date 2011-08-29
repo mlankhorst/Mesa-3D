@@ -1,6 +1,11 @@
 
 #include "nv50_ir.h"
 #include "nv50_ir_target.h"
+#include "nv50_ir_build_util.h"
+
+extern "C" {
+#include "util/u_math.h"
+}
 
 namespace nv50_ir {
 
@@ -191,6 +196,8 @@ private:
    void unary(Instruction *, const ImmediateValue&);
 
    unsigned int foldCount;
+
+   BuildUtil bld;
 };
 
 // TODO: remember generated immediates and only revisit these
@@ -334,6 +341,8 @@ ConstantFolding::expr(Instruction *i,
       }
       break;
    case OP_DIV:
+      if (b->data.u32 == 0)
+         break;
       switch (i->dType) {
       case TYPE_F32: res.data.f32 = a->data.f32 / b->data.f32; break;
       case TYPE_F64: res.data.f64 = a->data.f64 / b->data.f64; break;
@@ -558,12 +567,82 @@ ConstantFolding::opnd(Instruction *i, ImmediateValue *src, int s)
       break;
 
    case OP_DIV:
-      if (s == 1 && (i->dType == TYPE_S32 || i->dType == TYPE_U32)) {
-         if (imm.reg.data.s32 > 0 && imm.isPow2()) {
-            i->op = OP_SHR;
-            imm.applyLog2();
-            i->setSrc(1, New_ImmediateValue(prog, imm.reg.data.u32));
-         }
+      if (s != 1 || (i->dType != TYPE_S32 && i->dType != TYPE_U32))
+         break;
+      bld.setPosition(i, false);
+      if (imm.reg.data.u32 == 0) {
+         break;
+      } else
+      if (imm.reg.data.u32 == 1) {
+         i->op = OP_MOV;
+         i->setSrc(1, NULL);
+      } else
+      if (i->dType == TYPE_U32 && imm.isPow2()) {
+         i->op = OP_SHL;
+         i->setSrc(1, bld.mkImm(util_logbase2(imm.reg.data.u32)));
+      } else
+      if (i->dType == TYPE_U32) {
+         Instruction *mul;
+         Value *tA, *tB;
+         const uint32_t d = imm.reg.data.u32;
+         uint32_t m;
+         int r, s;
+         uint32_t l = util_logbase2(d);
+         if (((uint32_t)1 << l) < d)
+            ++l;
+         m = (((uint64_t)1 << 32) * (((uint64_t)1 << l) - d)) / d + 1;
+         r = l ? 1 : 0;
+         s = l ? (l - 1) : 0;
+
+         tA = bld.getSSA();
+         tB = bld.getSSA();
+         mul = bld.mkOp2(OP_MUL, TYPE_U32, tA, i->getSrc(0),
+                         bld.loadImm(NULL, m));
+         mul->subOp = NV50_IR_SUBOP_MUL_HIGH;
+         bld.mkOp2(OP_SUB, TYPE_U32, tB, i->getSrc(0), tA);
+         tA = bld.getSSA();
+         if (r)
+            bld.mkOp2(OP_SHR, TYPE_U32, tA, tB, bld.mkImm(r));
+         else
+            tA = tB;
+         tB = s ? bld.getSSA() : i->getDef(0);
+         bld.mkOp2(OP_ADD, TYPE_U32, tB, mul->getDef(0), tA);
+         if (s)
+            bld.mkOp2(OP_SHR, TYPE_U32, i->getDef(0), tB, bld.mkImm(s));
+
+         Del_Instruction(prog, i);
+      } else
+      if (imm.reg.data.s32 == -1) {
+         i->op = OP_NEG;
+         i->setSrc(1, NULL);
+      } else {
+         LValue *tA, *tB;
+         LValue *tD;
+         const int32_t d = imm.reg.data.s32;
+         int32_t m;
+         int32_t l = util_logbase2(static_cast<unsigned>(abs(d)));
+         if ((1 << l) < abs(d))
+            ++l;
+         if (!l)
+            l = 1;
+         m = ((uint64_t)1 << (32 + l - 1)) / abs(d) + 1 - ((uint64_t)1 << 32);
+
+         tA = bld.getSSA();
+         tB = bld.getSSA();
+         bld.mkOp3(OP_MAD, TYPE_S32, tA, i->getSrc(0), bld.loadImm(NULL, m),
+                   i->getSrc(0))->subOp = NV50_IR_SUBOP_MUL_HIGH;
+         if (l > 1)
+            bld.mkOp2(OP_SHR, TYPE_S32, tB, tA, bld.mkImm(l - 1));
+         else
+            tB = tA;
+         tA = bld.getSSA();
+         bld.mkCmp(OP_SET, CC_LT, TYPE_S32, tA, i->getSrc(0), bld.mkImm(0));
+         tD = (d < 0) ? bld.getSSA() : i->getDef(0)->asLValue();
+         bld.mkOp2(OP_SUB, TYPE_U32, tD, tB, tA);
+         if (d < 0)
+            bld.mkOp1(OP_NEG, TYPE_S32, i->getDef(0), tB);
+
+         Del_Instruction(prog, i);
       }
       break;
 
@@ -744,6 +823,7 @@ AlgebraicOpt::handleADD(Instruction *add)
       return;
 
    add->op = OP_MAD;
+   add->subOp = src->getInsn()->subOp; // potentially mul-high
 
    add->setSrc(2, add->src[s ? 0 : 1]);
 
@@ -879,6 +959,7 @@ public:
 
 private:
    virtual bool visit(BasicBlock *);
+   bool runOpt(BasicBlock *);
 
    Record **getList(const Instruction *);
 
@@ -893,8 +974,8 @@ private:
    bool replaceStFromSt(Instruction *restrict st, Record *stRec);
 
    void addRecord(Instruction *ldst);
-   void purgeRecords(Instruction *st);
-   void lockStores(Instruction *ld);
+   void purgeRecords(Instruction *const st, DataFile);
+   void lockStores(Instruction *const ld);
    void reset();
 
 private:
@@ -946,7 +1027,6 @@ MemoryOpt::combineLd(Record *rec, Instruction *ld)
        ((size == 0xc) && (MIN2(offLd, offRc) & 0xf)))
       return false;
 
-   // TODO: loads to 64 bit LValues
    assert(sizeRc + sizeLd <= 16 && offRc != offLd);
 
    for (j = 0; sizeRc; sizeRc -= rec->insn->getDef(j)->reg.size, ++j);
@@ -1258,7 +1338,7 @@ MemoryOpt::Record::overlaps(const Instruction *ldst) const
 // The stored value can, however, still be used to determine the value
 // returned by future loads.
 void
-MemoryOpt::lockStores(Instruction *ld)
+MemoryOpt::lockStores(Instruction *const ld)
 {
    for (Record *r = stores[ld->src[0].getFile()]; r; r = r->next)
       if (!r->locked && r->overlaps(ld))
@@ -1269,21 +1349,28 @@ MemoryOpt::lockStores(Instruction *ld)
 // Stores to the location of @st may no longer be used to derive
 // the value at it nor be coalesced into later stores.
 void
-MemoryOpt::purgeRecords(Instruction *st)
+MemoryOpt::purgeRecords(Instruction *const st, DataFile f)
 {
-   const DataFile f = st->src[0].getFile();
+   if (st)
+      f = st->src[0].getFile();
 
    for (Record *r = loads[f]; r; r = r->next)
-      if (r->overlaps(st))
+      if (!st || r->overlaps(st))
          r->unlink(&loads[f]);
 
    for (Record *r = stores[f]; r; r = r->next)
-      if (r->overlaps(st))
+      if (!st || r->overlaps(st))
          r->unlink(&stores[f]);
 }
 
 bool
 MemoryOpt::visit(BasicBlock *bb)
+{
+   return runOpt(bb);
+}
+
+bool
+MemoryOpt::runOpt(BasicBlock *bb)
 {
    Instruction *ldst, *next;
    Record *rec;
@@ -1293,14 +1380,23 @@ MemoryOpt::visit(BasicBlock *bb)
       bool keep = true;
       bool isLoad = true;
       next = ldst->next;
-      if (ldst->op != OP_LOAD && ldst->op != OP_VFETCH) {
-         if (ldst->op != OP_STORE && ldst->op != OP_EXPORT)
+
+      if (ldst->op == OP_LOAD || ldst->op == OP_VFETCH) {
+         if (ldst->getDef(0)->refCount() == 0) {
+            // dead load, might have been produced by constant folding
+            bb->remove(ldst);
             continue;
-         isLoad = false;
+         }
       } else
-      if (ldst->getDef(0)->refCount() == 0) {
-         // dead load, might have been produced by constant folding
-         bb->remove(ldst);
+      if (ldst->op == OP_STORE || ldst->op == OP_EXPORT) {
+         isLoad = false;
+      } else {
+         if (ldst->op == OP_CALL) {
+            purgeRecords(NULL, FILE_MEMORY_LOCAL);
+            purgeRecords(NULL, FILE_MEMORY_GLOBAL);
+            purgeRecords(NULL, FILE_MEMORY_SHARED);
+            purgeRecords(NULL, FILE_SHADER_OUTPUT);
+         }
          continue;
       }
       if (ldst->getPredicate()) // TODO: handle predicated ld/st
@@ -1337,7 +1433,7 @@ MemoryOpt::visit(BasicBlock *bb)
                keep = !combineSt(rec, ldst);
          }
          if (keep)
-            purgeRecords(ldst);
+            purgeRecords(ldst, DATA_FILE_COUNT);
       }
       if (keep)
          addRecord(ldst);
@@ -1398,10 +1494,19 @@ FlatteningPass::removeFlow(Instruction *insn)
    FlowInstruction *term = insn ? insn->asFlow() : NULL;
    if (!term)
       return;
+   Value *pred = term->getPredicate();
 
-   // TODO: this will be more difficult when we get arbitrary BRAs
-   if (term->op == OP_JOIN || term->op == OP_BRA)
-      term->bb->remove(term);
+   if (term->op == OP_JOIN || term->op == OP_BRA) {
+      // TODO: this will be more difficult when we get arbitrary BRAs
+      Del_Instruction(prog, term);
+
+      if (pred && pred->refCount() == 0) {
+         Instruction *pSet = pred->getUniqueInsn();
+         pred->join->reg.data.id = -1; // deallocate
+         if (pSet->isDead())
+            Del_Instruction(prog, pSet);
+      }
+   }
 }
 
 void
@@ -1419,8 +1524,9 @@ FlatteningPass::predicateInstructions(BasicBlock *bb, Value *pred, CondCode cc)
 bool
 FlatteningPass::mayPredicate(const Instruction *insn, const Value *pred) const
 {
-   if (insn->isPseudo()) // TODO: kill these off earlier, can ignore for now
+   if (insn->isPseudo())
       return true;
+   // TODO: calls where we don't know which registers are modified
 
    if (!prog->getTarget()->mayPredicate(insn, pred))
       return false;

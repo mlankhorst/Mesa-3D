@@ -223,6 +223,41 @@ BuildUtil::mkFlow(operation op, BasicBlock *targ, CondCode cc, Value *pred)
    return insn;
 }
 
+void
+BuildUtil::mkClobber(DataFile f, uint32_t rMask, int unit)
+{
+   static const uint16_t baseSize2[16] =
+   {
+      0x0000, 0x0010, 0x0011, 0x0020, 0x0012, 0x1210, 0x1211, 0x1220,
+      0x0013, 0x1310, 0x1311, 0x0020, 0x1320, 0x0022, 0x2210, 0x0040,
+   };
+
+   int base = 0;
+
+   for (; rMask; rMask >>= 4, base += 4) {
+      const uint32_t mask = rMask & 0xf;
+      if (!mask)
+         continue;
+      int base1 = (baseSize2[mask] >>  0) & 0xf;
+      int size1 = (baseSize2[mask] >>  4) & 0xf;
+      int base2 = (baseSize2[mask] >>  8) & 0xf;
+      int size2 = (baseSize2[mask] >> 12) & 0xf;
+      Instruction *insn = mkOp(OP_NOP, TYPE_NONE, NULL);
+      if (1) { // size1 can't be 0
+         LValue *reg = New_LValue(func, f);
+         reg->reg.size = size1 << unit;
+         reg->reg.data.id = base + base1;
+         insn->setDef(0, reg);
+      }
+      if (size2) {
+         LValue *reg = New_LValue(func, f);
+         reg->reg.size = size2 << unit;
+         reg->reg.data.id = base + base2;
+         insn->setDef(1, reg);
+      }
+   }
+}
+
 ImmediateValue *
 BuildUtil::mkImm(uint32_t u)
 {

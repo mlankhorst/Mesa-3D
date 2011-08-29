@@ -1137,7 +1137,7 @@ CodeEmitterNV50::emitInstruction(Instruction *insn)
       ERROR("skipping unencodable instruction: "); insn->print();
       return false;
    } else
-   if (codeSize + insn->encSize > maxCodeSize) {
+   if (codeSize + insn->encSize > codeSizeLimit) {
       ERROR("code emitter output buffer too small\n");
       return false;
    }
@@ -1318,7 +1318,7 @@ CodeEmitterNV50::getMinEncodingSize(const Instruction *i) const
 CodeEmitterNV50::CodeEmitterNV50(const Target *target) : targ(target)
 {
    code = NULL;
-   codeSize = maxCodeSize = 0;
+   codeSize = codeSizeLimit = 0;
 }
 
 CodeEmitter *

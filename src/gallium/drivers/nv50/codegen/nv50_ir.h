@@ -79,7 +79,7 @@ enum operation
    OP_DISCARD,
    OP_EXIT,
    OP_MEMBAR,
-   OP_VFETCH,
+   OP_VFETCH,    // may have extra source for vertex base address
    OP_PFETCH,    // fetch base address for vertex data
    OP_EXPORT,
    OP_LINTERP,
@@ -109,6 +109,8 @@ enum operation
    OP_EXTBF,
    OP_LAST
 };
+
+#define NV50_IR_SUBOP_MUL_HIGH 1
 
 enum DataType
 {
@@ -648,7 +650,7 @@ public:
    RoundMode rnd;
    CacheMode cache;
 
-   uint8_t subOp; // quadop, etc.
+   uint8_t subOp; // quadop, 1 for mul-high, etc.
 
    unsigned encSize    : 4; // encoding size in bytes
    unsigned saturate   : 1; // to [0.0f, 1.0f]
@@ -937,7 +939,7 @@ private:
 enum CGStage
 {
    CG_STAGE_PRE_SSA,
-   CG_STAGE_SSA,
+   CG_STAGE_SSA, // expected directly before register allocation
    CG_STAGE_POST_RA
 };
 

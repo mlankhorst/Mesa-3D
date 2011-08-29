@@ -6,6 +6,37 @@
 
 namespace nv50_ir {
 
+struct RelocInfo;
+
+struct RelocEntry
+{
+   enum Type
+   {
+      TYPE_CODE,
+      TYPE_BUILTIN,
+      TYPE_DATA
+   };
+
+   uint32_t data;
+   uint32_t mask;
+   uint32_t offset;
+   int8_t bitPos;
+   Type type;
+
+   inline void apply(uint32_t *binary, const RelocInfo *info) const;
+};
+
+struct RelocInfo
+{
+   uint32_t codePos;
+   uint32_t libPos;
+   uint32_t dataPos;
+
+   uint32_t count;
+
+   RelocEntry entry[0];
+};
+
 class CodeEmitter
 {
 public:
@@ -18,6 +49,11 @@ public:
    inline void *getCodeLocation() const { return code; }
    inline uint32_t getCodeSize() const { return codeSize; }
 
+   bool addReloc(RelocEntry::Type, int w, uint32_t data, uint32_t m,
+                 int s);
+
+   inline void *getRelocInfo() const { return relocInfo; }
+
    void prepareEmission(Program *);
    void prepareEmission(Function *);
    virtual void prepareEmission(BasicBlock *);
@@ -27,17 +63,25 @@ public:
 protected:
    uint32_t *code;
    uint32_t codeSize;
-   uint32_t maxCodeSize;
+   uint32_t codeSizeLimit;
+
+   RelocInfo *relocInfo;
 };
 
 class Target
 {
 public:
-   static Target *create(unsigned int chipset);
+   static Target *create(uint32_t chipset);
 
-   inline unsigned int getChipset() const { return chipset; }
+   // 0x50 and 0x84 to 0xaf for nv50
+   // 0xc0 to 0xdf for nvc0
+   inline uint32_t getChipset() const { return chipset; }
 
    virtual CodeEmitter *getCodeEmitter(Program::Type) = 0;
+
+   // Drivers should upload this so we can use it from all programs.
+   // The address chosen is supplied to the relocation routine.
+   virtual void getBuiltinCode(const uint32_t **code, uint32_t *size) const = 0;
 
    virtual bool runLegalizePass(Program *, CGStage stage) const = 0;
 
@@ -61,6 +105,7 @@ public:
       unsigned int pseudo      : 1;
       unsigned int flow        : 1;
       unsigned int hasDest     : 1;
+      unsigned int terminator  : 1;
    };
 
    inline const OpInfo& getOpInfo(const Instruction *) const;
@@ -71,9 +116,11 @@ public:
    virtual bool insnCanLoad(const Instruction *insn, int s,
                             const Instruction *ld) const = 0;
    virtual bool isOpSupported(operation, DataType) const = 0;
-   virtual bool isModSupported(const Instruction *, int s, Modifier) const = 0;
+   virtual bool isModSupported(const Instruction *,
+                               int s, Modifier) const = 0;
    virtual bool isSatSupported(const Instruction *) const = 0;
-   virtual bool mayPredicate(const Instruction *, const Value *) const = 0;
+   virtual bool mayPredicate(const Instruction *,
+                             const Value *) const = 0;
 
    virtual unsigned int getFileSize(DataFile) const = 0;
    virtual unsigned int getFileUnit(DataFile) const = 0;
@@ -84,7 +131,7 @@ public:
    bool joinAnterior; // true if join is executed before the op
 
 protected:
-   unsigned int chipset;
+   uint32_t chipset;
 
    DataFile nativeFileMap[DATA_FILE_COUNT];
 

@@ -251,7 +251,7 @@ BasicBlock::initiatesSimpleConditional() const
    if (eR == Graph::Edge::CROSS || eR == Graph::Edge::BACK)
       return 0x2;
 
-   if (out[1]->outgoingCount() > 1)
+   if (out[1]->outgoingCount() != 1) // 0 is IF { RET; }, >1 is more divergence
       return 0x0;
    // do they reconverge immediately ?
    if (out[1]->outgoing().getNode() == out[0])

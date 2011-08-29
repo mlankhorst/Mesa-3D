@@ -253,23 +253,19 @@ class CFGIterator : public Iterator
 public:
    CFGIterator(Graph *graph)
    {
-      unsigned int seq = graph->nextSequence();
-
       nodes = new Graph::Node * [graph->getSize() + 1];
       count = 0;
       pos = 0;
       nodes[graph->getSize()] = 0;
 
-      // XXX: argh, use graph->sequence instead of tag and just raise it by > 1
+      // TODO: argh, use graph->sequence instead of tag and just raise it by > 1
       Iterator *iter;
       for (iter = graph->iteratorDFS(); !iter->end(); iter->next())
          reinterpret_cast<Graph::Node *>(iter->get())->tag = 0;
       graph->putIterator(iter);
 
-      if (graph->getRoot()) {
-         graph->getRoot()->visit(seq);
-         search(graph->getRoot(), seq);
-      }
+      if (graph->getRoot())
+         search(graph->getRoot(), graph->nextSequence());
    }
 
    virtual void *get() const { return nodes[pos]; }
@@ -286,6 +282,8 @@ private:
       while (bb.getSize()) {
          node = reinterpret_cast<Graph::Node *>(bb.pop().u.p);
          assert(node);
+         if (!node->visit(sequence))
+            continue;
          node->tag = 0;
 
          for (Graph::EdgeIterator ei = node->outgoing(); !ei.end(); ei.next()) {

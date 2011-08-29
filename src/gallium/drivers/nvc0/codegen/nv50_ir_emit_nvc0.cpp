@@ -8,7 +8,7 @@ namespace nv50_ir {
 class CodeEmitterNVC0 : public CodeEmitter
 {
 public:
-   CodeEmitterNVC0(const Target *);
+   CodeEmitterNVC0(const TargetNVC0 *);
 
    virtual bool emitInstruction(Instruction *);
    virtual uint32_t getMinEncodingSize(const Instruction *) const;
@@ -16,7 +16,7 @@ public:
    inline void setProgramType(Program::Type pType) { progType = pType; }
 
 private:
-   const Target *targ;
+   const TargetNVC0 *targ;
 
    Program::Type progType;
 
@@ -469,6 +469,8 @@ CodeEmitterNVC0::emitUMUL(const Instruction *i)
       } else {
          emitForm_A(i, HEX64(50000000, 00000003));
       }
+      if (i->subOp == NV50_IR_SUBOP_MUL_HIGH)
+         code[0] |= 1 << 6;
       if (i->sType == TYPE_S32)
          code[0] |= 1 << 5;
       if (i->dType == TYPE_S32)
@@ -555,7 +557,7 @@ CodeEmitterNVC0::emitUADD(const Instruction *i)
 void
 CodeEmitterNVC0::emitIMAD(const Instruction *i)
 {
-   assert(i->encSize == 0);
+   assert(i->encSize == 8);
    emitForm_A(i, HEX64(20000000, 00000003));
 
    if (isSignedType(i->dType))
@@ -571,6 +573,9 @@ CodeEmitterNVC0::emitIMAD(const Instruction *i)
    if (i->src[2].mod.neg()) code[0] |= 0x10;
    if (i->src[1].mod.neg() ^
        i->src[0].mod.neg()) code[0] |= 0x20;
+
+   if (i->subOp == NV50_IR_SUBOP_MUL_HIGH)
+      code[0] |= 1 << 6;
 }
 
 void
@@ -1058,12 +1063,22 @@ CodeEmitterNVC0::emitFlow(const Instruction *i)
       code[0] |= 1 << 16;
 
    if (f->op == OP_CALL) {
+      if (f->builtin) {
+         assert(f->absolute);
+         uint32_t pcAbs = targ->getBuiltinOffset(f->target.builtin);
+         addReloc(RelocEntry::TYPE_BUILTIN, 0, pcAbs, 0xfc000000, 26);
+         addReloc(RelocEntry::TYPE_BUILTIN, 1, pcAbs, 0x03ffffff, -6);
+      } else {
+         assert(!f->absolute);
+         int32_t pcRel = f->target.fn->binPos - (codeSize + 8);
+         code[0] |= (pcRel & 0x3f) << 26;
+         code[1] |= (pcRel >> 6) & 0x3ffff;
+      }
    } else
-   if ((mask & 2) && f->target.bb) {
+   if (mask & 2) {
       int32_t pcRel = f->target.bb->binPos - (codeSize + 8);
-
-      assert(!f->absolute); // TODO
-
+      // currently we don't want absolute branches
+      assert(!f->absolute);
       code[0] |= (pcRel & 0x3f) << 26;
       code[1] |= (pcRel >> 6) & 0x3ffff;
    }
@@ -1418,7 +1433,7 @@ CodeEmitterNVC0::emitInstruction(Instruction *insn)
       ERROR("skipping unencodable instruction: "); insn->print();
       return false;
    } else
-   if (codeSize + insn->encSize > maxCodeSize) {
+   if (codeSize + insn->encSize > codeSizeLimit) {
       ERROR("code emitter output buffer too small\n");
       return false;
    }
@@ -1658,10 +1673,11 @@ CodeEmitterNVC0::getMinEncodingSize(const Instruction *i) const
    return 4;
 }
 
-CodeEmitterNVC0::CodeEmitterNVC0(const Target *target) : targ(target)
+CodeEmitterNVC0::CodeEmitterNVC0(const TargetNVC0 *target) : targ(target)
 {
    code = NULL;
-   codeSize = maxCodeSize = 0;
+   codeSize = codeSizeLimit = 0;
+   relocInfo = NULL;
 }
 
 CodeEmitter *

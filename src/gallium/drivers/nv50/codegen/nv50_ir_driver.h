@@ -50,8 +50,7 @@ struct nv50_ir_prog_info
       uint32_t tlsSize;
       uint8_t sourceFmt; /* NV50_PROGRAM_IR */
       const void *source;
-      const void *relocationData;
-      unsigned relocationCount;
+      void *relocData;
    } bin;
 
    struct nv50_ir_varying sv[PIPE_MAX_SHADER_INPUTS];
@@ -120,6 +119,14 @@ extern "C" {
 #endif
 
 extern int nv50_ir_generate_code(struct nv50_ir_prog_info *);
+
+extern void nv50_ir_relocate_code(void *relocData, uint32_t *code,
+                                  uint32_t codePos,
+                                  uint32_t libPos,
+                                  uint32_t dataPos);
+
+extern void nv50_ir_get_target_library(uint32_t chipset,
+                                       const uint32_t **code, uint32_t *size);
 
 #ifdef __cplusplus
 }

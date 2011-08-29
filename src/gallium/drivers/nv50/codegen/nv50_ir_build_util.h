@@ -55,6 +55,8 @@ public:
 
    Instruction *mkSelect(Value *pred, Value *dst, Value *trSrc, Value *flSrc);
 
+   void mkClobber(DataFile file, uint32_t regMask, int regUnitLog2);
+
    ImmediateValue *mkImm(float);
    ImmediateValue *mkImm(uint32_t);
    ImmediateValue *mkImm(uint64_t);

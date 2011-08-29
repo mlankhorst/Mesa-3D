@@ -247,6 +247,7 @@ int Modifier::print(char *buf, size_t size) const
    
 int LValue::print(char *buf, size_t size, DataType ty) const
 {
+   const char *postFix = "";
    size_t pos = 0;
    int idx = join->reg.data.id >= 0 ? join->reg.data.id : id;
    char p = join->reg.data.id >= 0 ? '$' : '%';
@@ -256,9 +257,19 @@ int LValue::print(char *buf, size_t size, DataType ty) const
    switch (reg.file) {
    case FILE_GPR:
       r = 'r'; col = TXT_GPR;
+      if (reg.size == 8)
+         postFix = "d";
+      else
+      if (reg.size == 16)
+         postFix = "q";
       break;
    case FILE_PREDICATE:
       r = 'p'; col = TXT_REGISTER;
+      if (reg.size == 2)
+         postFix = "d";
+      else
+      if (reg.size == 4)
+         postFix = "q";
       break;
    case FILE_FLAGS:
       r = 'c'; col = TXT_FLAGS;
@@ -272,7 +283,7 @@ int LValue::print(char *buf, size_t size, DataType ty) const
       break;
    }
 
-   PRINT("%s%c%c%i", colour[col], p, r, idx);
+   PRINT("%s%c%c%i%s", colour[col], p, r, idx, postFix);
 
    return pos;
 }
@@ -389,6 +400,9 @@ void Instruction::print() const
 
    if (asFlow()) {
       PRINT("%s", operationStr[op]);
+      if (op == OP_CALL && asFlow()->builtin) {
+         PRINT(" %sBUILTIN:%i", colour[TXT_BRA], asFlow()->target.builtin);
+      } else
       if (op == OP_CALL && asFlow()->target.fn) {
          PRINT(" %s%s", colour[TXT_BRA], asFlow()->target.fn->getName());
       } else
@@ -410,7 +424,7 @@ void Instruction::print() const
 
    if (def[1].exists())
       PRINT(" {");
-   for (d = 0; d < NV50_IR_MAX_DEFS && def[d].exists(); ++d) {
+   for (d = 0; defExists(d); ++d) {
       SPACE();
       pos += def[d].get()->print(&buf[pos], size - pos);
    }
@@ -426,7 +440,7 @@ void Instruction::print() const
    if (sType != dType)
       PRINT(" %s%s", colour[TXT_INSN], DataTypeStr[sType]);
 
-   for (s = 0; s < NV50_IR_MAX_SRCS && src[s].exists(); ++s) {
+   for (s = 0; srcExists(s); ++s) {
       if (s == predSrc || src[s].usedAsPtr)
          continue;
       const size_t pre = pos;

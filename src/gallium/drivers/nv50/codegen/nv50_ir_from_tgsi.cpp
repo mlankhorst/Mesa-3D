@@ -322,6 +322,7 @@ nv50_ir::DataType Instruction::inferSrcType() const
    case TGSI_OPCODE_ISGE:
    case TGSI_OPCODE_ISHR:
    case TGSI_OPCODE_ISLT:
+   case TGSI_OPCODE_SAD: // not sure about SAD, but no one has a float version
       return nv50_ir::TYPE_S32;
    default:
       return nv50_ir::TYPE_F32;
@@ -868,6 +869,8 @@ private:
 
    Value *interpolate(tgsi::Instruction::SrcRegister, int c, Value *ptr);
 
+   void insertConvergenceOps(BasicBlock *conv, BasicBlock *fork);
+
    Value *buildDot(int dim);
 
 private:
@@ -890,8 +893,10 @@ private:
    Value *fragCoord[4];
    Value *clipVtx[4];
 
+   Value *vtxBase[5]; // base address of vertex in primitive (for TP/GP)
+
    Stack condBBs;  // fork BB, then else clause BB
-   Stack joins;    // join target instructions (in fork BB)
+   Stack joinBBs;  // fork BB, for inserting join ops on ENDIF
    Stack loopBBs;  // loop headers
    Stack breakBBs; // end of / after loop
    Stack entryBBs; // start of current (inlined) subroutine
@@ -1186,6 +1191,17 @@ Converter::buildDot(int dim)
       mkOp3(OP_MAD, TYPE_F32, dotp, src0, src1, dotp);
    }
    return dotp;
+}
+
+void
+Converter::insertConvergenceOps(BasicBlock *conv, BasicBlock *fork)
+{
+   FlowInstruction *join = new FlowInstruction(func, OP_JOIN, NULL);
+   join->fixed = 1;
+   conv->insertHead(join);
+
+   fork->joinAt = new FlowInstruction(func, OP_JOINAT, conv);
+   fork->insertBefore(fork->getExit(), fork->joinAt);
 }
 
 void
@@ -1758,14 +1774,9 @@ Converter::handleInstruction(const struct tgsi_full_instruction *insn)
 
       bb->cfg.attach(&ifBB->cfg, Graph::Edge::TREE);
       condBBs.push(bb);
+      joinBBs.push(bb);
 
       mkFlow(OP_BRA, NULL, CC_NOT_P, fetchSrc(0, 0));
-
-      if (condBBs.getSize() < 6) {
-         bb->joinAt = new FlowInstruction(func, OP_JOINAT, NULL);
-         bb->insertBefore(bb->getExit(), bb->joinAt);
-      }
-      joins.push(bb->joinAt);
 
       setPosition(ifBB, true);
    }
@@ -1776,11 +1787,11 @@ Converter::handleInstruction(const struct tgsi_full_instruction *insn)
       BasicBlock *forkBB = reinterpret_cast<BasicBlock *>(condBBs.pop().u.p);
 
       forkBB->cfg.attach(&elseBB->cfg, Graph::Edge::TREE);
-      forkBB->getExit()->asFlow()->target.bb = elseBB;
-
       condBBs.push(bb);
 
-      mkFlow(OP_BRA, NULL, CC_ALWAYS, NULL);
+      forkBB->getExit()->asFlow()->target.bb = elseBB;
+      if (!bb->isTerminated())
+         mkFlow(OP_BRA, NULL, CC_ALWAYS, NULL);
 
       setPosition(elseBB, true);
    }
@@ -1789,23 +1800,21 @@ Converter::handleInstruction(const struct tgsi_full_instruction *insn)
    {
       BasicBlock *convBB = new BasicBlock(func);
       BasicBlock *prevBB = reinterpret_cast<BasicBlock *>(condBBs.pop().u.p);
-      Instruction *joinAt = reinterpret_cast<Instruction *>(joins.pop().u.p);
+      BasicBlock *forkBB = reinterpret_cast<BasicBlock *>(joinBBs.pop().u.p);
 
-      if (!bb->isTerminated()) { // else attach dummy edge anyway ?
+      if (!bb->isTerminated()) {
+         // we only want join if none of the clauses ended with CONT/BREAK/RET
+         if (prevBB->getExit()->op == OP_BRA && joinBBs.getSize() < 6)
+            insertConvergenceOps(convBB, forkBB);
          mkFlow(OP_BRA, convBB, CC_ALWAYS, NULL);
          bb->cfg.attach(&convBB->cfg, Graph::Edge::FORWARD);
       }
-      prevBB->cfg.attach(&convBB->cfg, Graph::Edge::FORWARD);
 
-      prevBB->getExit()->asFlow()->target.bb = convBB;
-
-      setPosition(convBB, true);
-
-      if (joinAt) {
-         joinAt->asFlow()->target.bb = convBB;
-         convBB->insertHead(new FlowInstruction(func, OP_JOIN, NULL));
-         convBB->getEntry()->fixed = 1;
+      if (prevBB->getExit()->op == OP_BRA) {
+         prevBB->cfg.attach(&convBB->cfg, Graph::Edge::FORWARD);
+         prevBB->getExit()->asFlow()->target.bb = convBB;
       }
+      setPosition(convBB, true);
    }
       break;
    case TGSI_OPCODE_BGNLOOP:
@@ -1822,7 +1831,6 @@ Converter::handleInstruction(const struct tgsi_full_instruction *insn)
 
       bb->cfg.attach(&lbgnBB->cfg, Graph::Edge::TREE);
       setPosition(lbgnBB, true);
-
       mkFlow(OP_PRECONT, lbgnBB, CC_ALWAYS, NULL);
    }
       break;
@@ -1830,10 +1838,10 @@ Converter::handleInstruction(const struct tgsi_full_instruction *insn)
    {
       BasicBlock *loopBB = reinterpret_cast<BasicBlock *>(loopBBs.pop().u.p);
 
-      if (!bb->isTerminated())
+      if (!bb->isTerminated()) {
          mkFlow(OP_CONT, loopBB, CC_ALWAYS, NULL);
-      bb->cfg.attach(&loopBB->cfg, Graph::Edge::BACK);
-
+         bb->cfg.attach(&loopBB->cfg, Graph::Edge::BACK);
+      }
       setPosition(reinterpret_cast<BasicBlock *>(breakBBs.pop().u.p), true);
    }
       break;
@@ -1842,27 +1850,24 @@ Converter::handleInstruction(const struct tgsi_full_instruction *insn)
       if (bb->isTerminated())
          break;
       BasicBlock *brkBB = reinterpret_cast<BasicBlock *>(breakBBs.peek().u.p);
-
       mkFlow(OP_BREAK, brkBB, CC_ALWAYS, NULL);
-
       bb->cfg.attach(&brkBB->cfg, Graph::Edge::CROSS);
    }
       break;
    case TGSI_OPCODE_CONT:
    {
+      if (bb->isTerminated())
+         break;
       BasicBlock *contBB = reinterpret_cast<BasicBlock *>(loopBBs.peek().u.p);
-
-      if (!bb->isTerminated())
-         bb->cfg.attach(&contBB->cfg, Graph::Edge::BACK);
-
       mkFlow(OP_CONT, contBB, CC_ALWAYS, NULL);
+      bb->cfg.attach(&contBB->cfg, Graph::Edge::BACK);
    }
       break;
    case TGSI_OPCODE_BGNSUB:
    {
       if (!retIPs.getSize()) {
          // end of main function
-         ip = code->scan.num_instructions;
+         ip = code->scan.num_instructions - 2; // goto END
          return true;
       }
       BasicBlock *entry = new BasicBlock(func);
@@ -1885,7 +1890,7 @@ Converter::handleInstruction(const struct tgsi_full_instruction *insn)
    case TGSI_OPCODE_CAL:
       // we don't have function declarations, so inline everything
       retIPs.push(ip);
-      ip = tgsi.getLabel() - 1; // ip is incremented after return
+      ip = (ip + tgsi.getLabel()) - 1; // ip is incremented after return
       return true;
    case TGSI_OPCODE_RET:
    {
@@ -2026,9 +2031,13 @@ Converter::run()
       mkOp1(OP_RCP, TYPE_F32, fragCoord[3], fragCoord[3]);
    }
 
-   for (ip = 0; ip < code->scan.num_instructions; ++ip)
+   unsigned int limit = 64;
+   for (ip = 0; ip < code->scan.num_instructions; ++ip) {
       if (!handleInstruction(&code->insns[ip]))
          return false;
+      if (--limit == 0)
+         return false;
+   }
    return true;
 }
 

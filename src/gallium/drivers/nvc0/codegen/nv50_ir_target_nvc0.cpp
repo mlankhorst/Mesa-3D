@@ -14,38 +14,22 @@ TargetNVC0::TargetNVC0(unsigned int card)
    initOpInfo();
 }
 
-/* udiv(n, by)
- * {
- *  if (n < by)
- *    return 0, n
- *
- *  ln = bfind n + 1
- *  lb = bfind b + 1
- *
- *  l = ln - lb
- *
- *  by = shl by, l
- *
- *  q = 0
- *  while (l >= 0) {
- *    q = shl q, 1
- *    if (n >= by) {
- *      n -= by
- *      q |= 1
- *    }
- *    by = shr by, 1
- *    --l
- *  }
- *  rem = n
- * }
- */
-// Slow unsigned integer division.
+// BULTINS / LIBRARY FUNCTIONS:
+
+// lazyness -> will just hardcode everything for the time being
+
+// Will probably make this nicer once we support subroutines properly,
+// i.e. when we have an input IR that provides function declarations.
+
+static const uint32_t nvc0_builtin_code[] =
+{
+// DIV U32: slow unsigned integer division
 //
 // INPUT:   $r0: dividend, $r1: divisor
 // OUTPUT:  $r0: result, $r1: modulus
 // CLOBBER: $r2 - $r3, $p0 - $p1
-const uint32_t lib_nvc0_div_u32[] =
-{
+// SIZE:    14 * 8 bytes
+//
    0x0401dc03, 0x1b0e0000,
    0x00008003, 0x78000000,
    0x0400c003, 0x78000000,
@@ -62,16 +46,15 @@ const uint32_t lib_nvc0_div_u32[] =
    0x04208003, 0x5800c000,
    0x0430c103, 0x4800c000,
    0x0ffc5dff,
-   0x90001dff
-};
+   0x90001dff,
 
-// Slow signed integer division.
+// DIV S32: slow signed integer division
 //
 // INPUT:   $r0: dividend, $r1: divisor
 // OUTPUT:  $r0: result, $r1: modulus
 // CLOBBER: $r2 - $r3, $p0 - $p3
-const uint32_t lib_nvc0_div_s32[] =
-{
+// SIZE:    18 * 8 bytes
+//
    0xfc05dc23, 0x188e0000,
    0xfc17dc23, 0x18c40000,
    0x03301e18,
@@ -94,16 +77,15 @@ const uint32_t lib_nvc0_div_s32[] =
    0x0ffc5dff,
    0x01700e18,
    0x05704a18,
-   0x90001dff
-};
+   0x90001dff,
 
-// Newton Raphson reciprocal(x): r_{i+1} = r_i * (2.0 - x * r_i)
+// RCP F64: Newton Raphson reciprocal(x): r_{i+1} = r_i * (2.0 - x * r_i)
 //
 // INPUT:   $r0d (x)
 // OUTPUT:  $r0d (rcp(x))
 // CLOBBER: $r2 - $r7
-const uint32_t lib_nvc0_rcp_f64[] =
-{
+// SIZE:    9 * 8 bytes
+//
    0x9810dc08,
    0x00009c28,
    0x4001df18,
@@ -115,15 +97,14 @@ const uint32_t lib_nvc0_rcp_f64[] =
    0x08011e01, 0x200c0000,
    0x10201c01, 0x50000000,
    0x00001de7, 0x90000000,
-};
 
-// Newton Raphson rsqrt(x): r_{i+1} = r_i * (1.5 - 0.5 * x * r_i * r_i)
+// RSQ F64: Newton Raphson rsqrt(x): r_{i+1} = r_i * (1.5 - 0.5 * x * r_i * r_i)
 //
 // INPUT:   $r0d (x)
 // OUTPUT:  $r0d (rsqrt(x))
 // CLOBBER: $r2 - $r7
-const uint32_t lib_nvc0_rsqrt_f64[] =
-{
+// SIZE:    14 * 8 bytes
+//
    0x9c10dc08,
    0x00009c28,
    0x00019d18,
@@ -141,6 +122,28 @@ const uint32_t lib_nvc0_rsqrt_f64[] =
    0x10201c01, 0x50000000,
    0x00001de7, 0x90000000,
 };
+
+static const uint16_t nvc0_builtin_offsets[NVC0_BUILTIN_COUNT] =
+{
+   0,
+   8 * (14),
+   8 * (14 + 18),
+   8 * (14 + 18 + 9)
+};
+
+void
+TargetNVC0::getBuiltinCode(const uint32_t **code, uint32_t *size) const
+{
+   *code = &nvc0_builtin_code[0];
+   *size = sizeof(nvc0_builtin_code);
+}
+
+uint32_t
+TargetNVC0::getBuiltinOffset(int builtin) const
+{
+   assert(builtin < NVC0_BUILTIN_COUNT);
+   return nvc0_builtin_offsets[builtin];
+}
 
 static const uint8_t opInfo_srcNr[OP_LAST + 1] =
 {
@@ -317,7 +320,7 @@ TargetNVC0::getFileSize(DataFile file) const
 unsigned int
 TargetNVC0::getFileUnit(DataFile file) const
 {
-   if (file < FILE_MEMORY_CONST || file == FILE_SYSTEM_VALUE)
+   if (file == FILE_GPR || file == FILE_ADDRESS || file == FILE_SYSTEM_VALUE)
       return 2;
    return 0;
 }
@@ -354,22 +357,31 @@ TargetNVC0::insnCanLoad(const Instruction *i, int s,
 {
    DataFile sf = ld->src[0].getFile();
 
+   // immediate 0 can be represented by GPR $r63
+   if (sf == FILE_IMMEDIATE && ld->getSrc(0)->reg.data.u64 == 0)
+      return true;
+
    if (!(opInfo[i->op].srcFiles[s] & (1 << (int)sf)))
       return false;
 
+   // indirect loads can only be done by OP_LOAD/VFETCH/INTERP on nvc0
    if (ld->src[0].isIndirect())
       return false;
 
-   for (int k = 0; i->srcExists(k); ++k)
+   for (int k = 0; i->srcExists(k); ++k) {
+      if (i->src[k].getFile() == FILE_IMMEDIATE) {
+         if (i->getSrc(k)->reg.data.u64 != 0)
+            return false;
+      } else
       if (i->src[k].getFile() != FILE_GPR &&
-          i->src[k].getFile() != FILE_PREDICATE)
+          i->src[k].getFile() != FILE_PREDICATE) {
          return false;
+      }
+   }
 
+   // not all instructions support full 32 bit immediates
    if (sf == FILE_IMMEDIATE) {
       Storage &reg = ld->getSrc(0)->asImm()->reg;
-
-      if (reg.data.u64 == 0)
-         return true;
 
       if (opInfo[i->op].immdBits != 0xffffffff) {
          if (i->sType == TYPE_F32) {

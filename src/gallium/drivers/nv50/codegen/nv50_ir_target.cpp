@@ -26,7 +26,7 @@ CodeEmitter::setCodeLocation(void *ptr, uint32_t size)
 {
    code = reinterpret_cast<uint32_t *>(ptr);
    codeSize = 0;
-   maxCodeSize = size;
+   codeSizeLimit = size;
 }
 
 void
@@ -180,11 +180,87 @@ Program::emitBinary(struct nv50_ir_prog_info *info)
          for (Instruction *i = fn->bbArray[b]->getEntry(); i; i = i->next)
             emit->emitInstruction(i);
    }
-
-   emit->printBinary();
+   info->bin.relocData = emit->getRelocInfo();
 
    delete emit;
    return true;
 }
 
+#define RELOC_ALLOC_INCREMENT 8
+
+bool
+CodeEmitter::addReloc(RelocEntry::Type ty, int w, uint32_t data, uint32_t m,
+                      int s)
+{
+   unsigned int n = relocInfo ? relocInfo->count : 0;
+
+   if (!(n % RELOC_ALLOC_INCREMENT)) {
+      size_t size = sizeof(RelocInfo) + n * sizeof(RelocEntry);
+      relocInfo = reinterpret_cast<RelocInfo *>(
+         REALLOC(relocInfo, n ? size : 0,
+                 size + RELOC_ALLOC_INCREMENT * sizeof(RelocEntry)));
+      if (!relocInfo)
+         return false;
+   }
+   ++relocInfo->count;
+
+   relocInfo->entry[n].data = data;
+   relocInfo->entry[n].mask = m;
+   relocInfo->entry[n].offset = codeSize + w * 4;
+   relocInfo->entry[n].bitPos = s;
+   relocInfo->entry[n].type = ty;
+
+   return true;
+}
+
+void
+RelocEntry::apply(uint32_t *binary, const RelocInfo *info) const
+{
+   uint32_t value = 0;
+
+   switch (type) {
+   case TYPE_CODE: value = info->codePos; break;
+   case TYPE_BUILTIN: value = info->libPos; break;
+   case TYPE_DATA: value = info->dataPos; break;
+   default:
+      assert(0);
+      break;
+   }
+   value += data;
+   value = (bitPos < 0) ? (value >> -bitPos) : (value << bitPos);
+
+   binary[offset / 4] &= ~mask;
+   binary[offset / 4] |= value & mask;
+}
+
 } // namespace nv50_ir
+
+
+#include "nv50/codegen/nv50_ir_driver.h"
+
+extern "C" {
+
+void
+nv50_ir_relocate_code(void *relocData, uint32_t *code,
+                      uint32_t codePos,
+                      uint32_t libPos,
+                      uint32_t dataPos)
+{
+   nv50_ir::RelocInfo *info = reinterpret_cast<nv50_ir::RelocInfo *>(relocData);
+
+   info->codePos = codePos;
+   info->libPos = libPos;
+   info->dataPos = dataPos;
+
+   for (unsigned int i = 0; i < info->count; ++i)
+      info->entry[i].apply(code, info);
+}
+
+void
+nv50_ir_get_target_library(uint32_t chipset,
+                           const uint32_t **code, uint32_t *size)
+{
+   nv50_ir::Target::create(chipset)->getBuiltinCode(code, size);
+}
+
+}
