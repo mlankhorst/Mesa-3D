@@ -42,6 +42,9 @@ public:
    Instruction *mkMovToReg(int id, Value *);
    Instruction *mkMovFromReg(Value *, int id);
 
+   Instruction *mkVFETCH(Value *, DataType, DataFile, int32_t offset,
+                         Value *attrRel, Value *primRel);
+
    Instruction *mkCvt(operation, DataType, Value *, DataType, Value *);
    Instruction *mkCmp(operation, CondCode, DataType,
                       Value *,
@@ -106,7 +109,7 @@ public:
       void init();
    };
 
-   Symbol *mkSymbol(DataFile file, uint8_t fileIndex,
+   Symbol *mkSymbol(DataFile file, int8_t fileIndex,
                     DataType ty, uint32_t baseAddress);
 
    Symbol *mkSysVal(SVSemantic svName, uint32_t svIndex);

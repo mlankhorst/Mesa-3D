@@ -297,12 +297,12 @@ int ImmediateValue::print(char *buf, size_t size, DataType ty) const
    switch (ty) {
    case TYPE_F32: PRINT("%f", reg.data.f32); break;
    case TYPE_F64: PRINT("%f", reg.data.f64); break;
-   case TYPE_U8:
-   case TYPE_S8: PRINT("0x%02x", reg.data.u8); break;
-   case TYPE_U16:
-   case TYPE_S16: PRINT("0x%04x", reg.data.u16); break;
-   case TYPE_U32:
-   case TYPE_S32: PRINT("0x%08x", reg.data.u32); break;
+   case TYPE_U8:  PRINT("0x%02x", reg.data.u8); break;
+   case TYPE_S8:  PRINT("%i", reg.data.s8); break;
+   case TYPE_U16: PRINT("0x%04x", reg.data.u16); break;
+   case TYPE_S16: PRINT("%i", reg.data.s16); break;
+   case TYPE_U32: PRINT("0x%08x", reg.data.u32); break;
+   case TYPE_S32: PRINT("%i", reg.data.s32); break;
    case TYPE_U64:
    case TYPE_S64:
    default:
@@ -314,10 +314,11 @@ int ImmediateValue::print(char *buf, size_t size, DataType ty) const
 
 int Symbol::print(char *buf, size_t size, DataType ty) const
 {
-   return print(buf, size, 0, ty);
+   return print(buf, size, NULL, NULL, ty);
 }
 
-int Symbol::print(char *buf, size_t size, Value *rel, DataType ty) const
+int Symbol::print(char *buf, size_t size,
+                  Value *rel, Value *dimRel, DataType ty) const
 {
    size_t pos = 0;
    char c;
@@ -354,6 +355,11 @@ int Symbol::print(char *buf, size_t size, Value *rel, DataType ty) const
       PRINT("%s%c%i[", colour[TXT_MEM], c, reg.fileIndex);
    else
       PRINT("%s%c[", colour[TXT_MEM], c);
+
+   if (dimRel) {
+      pos += dimRel->print(&buf[pos], size - pos, TYPE_S32);
+      PRINT("%s][", colour[TXT_MEM]);
+   }
 
    if (rel) {
       pos += rel->print(&buf[pos], size - pos);
@@ -448,9 +454,10 @@ void Instruction::print() const
       pos += src[s].mod.print(&buf[pos], BUFSZ - pos);
       if (pos > pre + 1)
          SPACE();
-      if (src[s].isIndirect())
-         pos += src[s].get()->asSym()->print(
-            &buf[pos], BUFSZ - pos, src[s].getIndirect()->get());
+      if (src[s].isIndirect(0) || src[s].isIndirect(1))
+         pos += src[s].get()->asSym()->print(&buf[pos], BUFSZ - pos,
+                                             getIndirect(s, 0),
+                                             getIndirect(s, 1));
       else
          pos += src[s].get()->print(&buf[pos], BUFSZ - pos, sType);
    }

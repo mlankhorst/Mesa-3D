@@ -227,7 +227,7 @@ CodeEmitterNV50::setARegBits(unsigned int u)
 void
 CodeEmitterNV50::setAReg16(const Instruction *i, int s)
 {
-   s = i->src[s].indirect;
+   s = i->src[s].indirect[0];
    if (s >= 0)
       setARegBits(SDATA(i->src[s]).id + 1);
 }
@@ -473,7 +473,7 @@ CodeEmitterNV50::emitLOAD(const Instruction *i)
    emitFlagsWr(i);
 
    if (i->src[0].getFile() == FILE_MEMORY_GLOBAL) {
-      srcId(*i->src[0].getIndirect(), 9);
+      srcId(*i->src[0].getIndirect(0), 9);
    } else {
       setAReg16(i, 0);
       srcAddr16(i->src[0], 9);
@@ -530,7 +530,7 @@ CodeEmitterNV50::emitSTORE(const Instruction *i)
    if (f != FILE_SHADER_OUTPUT) {
       srcId(i->src[1], 2);
       if (f == FILE_MEMORY_GLOBAL)
-         srcId(*i->src[0].getIndirect(), 9);
+         srcId(*i->src[0].getIndirect(0), 9);
       if (f == FILE_MEMORY_LOCAL)
          srcAddr16(i->src[0], 9);
    }

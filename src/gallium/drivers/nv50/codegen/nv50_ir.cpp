@@ -39,7 +39,8 @@ Modifier Modifier::operator*(const Modifier m) const
 
 ValueRef::ValueRef() : value(0), insn(0), next(this), prev(this)
 {
-   indirect = -1;
+   indirect[0] = -1;
+   indirect[1] = -1;
    usedAsPtr = false;
 }
 
@@ -78,7 +79,8 @@ ValueRef::set(const ValueRef &ref)
 {
    this->set(ref.get());
    mod = ref.mod;
-   indirect = ref.indirect;
+   indirect[0] = ref.indirect[0];
+   indirect[1] = ref.indirect[1];
 }
 
 void
@@ -522,7 +524,6 @@ void Instruction::init()
    saturate = 0;
    join = terminator = 0;
    ftz = dnz = 0;
-   restart = 0;
    atomic = 0;
    perPatch = 0;
    fixed = 0;
@@ -562,13 +563,16 @@ Instruction::Instruction(Function *fn, operation opr, DataType ty, int ext)
    op = opr;
    dType = sType = ty;
 
-   fn->add(this, this->id);
+   fn->allInsns.insert(this, id);
 }
 
 Instruction::~Instruction()
 {
-   if (bb)
+   if (bb) {
+      Function *fn = bb->getFunction();
       bb->remove(this);
+      fn->allInsns.remove(id);
+   }
 
    for (int s = 0; srcExists(s); ++s)
       setSrc(s, NULL);
@@ -596,6 +600,33 @@ Instruction::swapSources(int a, int b)
    src[b].mod = m;
 }
 
+void
+Instruction::takeExtraSources(int s, Value *values[3])
+{
+   values[0] = getIndirect(s, 0);
+   if (values[0])
+      setIndirect(s, 0, NULL);
+
+   values[1] = getIndirect(s, 1);
+   if (values[1])
+      setIndirect(s, 1, NULL);
+
+   values[2] = getPredicate();
+   if (values[2])
+      setPredicate(cc, NULL);
+}
+
+void
+Instruction::putExtraSources(int s, Value *values[3])
+{
+   if (values[0])
+      setIndirect(s, 0, values[0]);
+   if (values[1])
+      setIndirect(s, 1, values[1]);
+   if (values[2])
+      setPredicate(cc, values[2]);
+}
+
 Instruction *
 Instruction::clone(bool deep) const
 {
@@ -612,12 +643,16 @@ Instruction::cloneBase(Instruction *insn, bool deep) const
 
    insn->cc = this->cc;
    insn->rnd = this->rnd;
+   insn->cache = this->cache;
+   insn->subOp = this->subOp;
 
    insn->saturate = this->saturate;
-   insn->join = this->saturate;
-   insn->atomic = this->saturate;
-   insn->ftz = this->saturate;
-   insn->restart = this->saturate;
+   insn->atomic = this->atomic;
+   insn->ftz = this->ftz;
+   insn->dnz = this->dnz;
+   insn->ipa = this->ipa;
+   insn->lanes = this->lanes;
+   insn->perPatch = this->perPatch;
 
    insn->postFactor = this->postFactor;
 
@@ -661,17 +696,21 @@ Instruction::srcCount(unsigned int mask) const
 }
 
 bool
-Instruction::setIndirect(int s, Value *value)
+Instruction::setIndirect(int s, int dim, Value *value)
 {
-   int p;
+   int p = src[s].indirect[dim];
 
    assert(this->srcExists(s));
-   for (p = s + 1; this->srcExists(p); ++p);
-
+   if (p < 0) {
+      if (!value)
+         return true;
+      for (p = s + 1; this->srcExists(p); ++p);
+   }
    assert(p < NV50_IR_MAX_SRCS);
+
    src[p] = value;
    src[p].usedAsPtr = (value != 0);
-   src[s].indirect = p;
+   src[s].indirect[dim] = value ? p : -1;
    return true;
 }
 
@@ -690,9 +729,7 @@ Instruction::setPredicate(CondCode ccode, Value *value)
 
    if (predSrc < 0) {
       int s;
-      for (s = 0; s < NV50_IR_MAX_SRCS; ++s)
-         if (!src[s].exists())
-            break;
+      for (s = 0; this->srcExists(s); ++s)
       assert(s < NV50_IR_MAX_SRCS);
       predSrc = s;
    }

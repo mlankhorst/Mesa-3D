@@ -1114,12 +1114,8 @@ CodeEmitterNVC0::emitVFETCH(const Instruction *i)
    code[0] |= (i->defCount(0xf) - 1) << 5;
 
    defId(i->def[0], 14);
-   srcId(i->src[0].getIndirect(), 20);
-
-   if (i->srcExists(1) && i->src[0].indirect != 1 && i->predSrc != 1)
-      srcId(i->src[1], 26); // secret vertex address
-   else
-      code[0] |= 0x3f << 26;
+   srcId(i->src[0].getIndirect(0), 20);
+   srcId(i->src[0].getIndirect(1), 26); // vertex address
 }
 
 void
@@ -1139,17 +1135,9 @@ CodeEmitterNVC0::emitEXPORT(const Instruction *i)
 
    assert(i->src[1].getFile() == FILE_GPR);
 
-   srcId(i->src[0].getIndirect(), 20);
+   srcId(i->src[0].getIndirect(0), 20);
+   srcId(i->src[0].getIndirect(1), 32 + 17); // vertex base address
    srcId(i->src[1], 26);
-
-   int s;
-   for (s = 1, size = 0;
-        size < typeSizeof(i->dType); size += i->getSrc(s)->reg.size, ++s);
-
-   if (i->srcExists(s) && i->src[0].indirect != s && i->predSrc != s)
-      srcId(i->src[s], 32 + 17); // secret vertex address
-   else
-      code[1] |= 0x3f << 17;
 }
 
 void
@@ -1163,15 +1151,17 @@ CodeEmitterNVC0::emitOUT(const Instruction *i)
    defId(i->def[0], 14); // new secret address
    srcId(i->src[0], 20); // old secret address, should be 0 initially
 
+   assert(i->src[0].getFile() == FILE_GPR);
+
    if (i->op == OP_EMIT)
       code[0] |= 1 << 5;
-   if (i->op == OP_RESTART || i->restart)
+   if (i->op == OP_RESTART || i->subOp == NV50_IR_SUBOP_EMIT_RESTART)
       code[0] |= 1 << 6;
 
    // vertex stream
    if (i->src[1].getFile() == FILE_IMMEDIATE) {
       code[1] |= 0xc000;
-      code[0] |= SDATA(i->src[0]).u32 << 26;
+      code[0] |= SDATA(i->src[1]).u32 << 26;
    } else {
       srcId(i->src[1], 26);
    }
@@ -1181,7 +1171,7 @@ void
 CodeEmitterNVC0::emitInterpMode(const Instruction *i)
 {
    if (i->encSize == 8) {
-      code[0] |= i->ipa << 6;
+      code[0] |= i->ipa << 6; // TODO: INTERP_SAMPLEID
    } else {
       if (i->getInterpMode() == NV50_IR_INTERP_SC)
          code[0] |= 0x80;
@@ -1206,7 +1196,7 @@ CodeEmitterNVC0::emitINTERP(const Instruction *i)
       else
          code[0] |= 0x3f << 26;
 
-      srcId(i->src[0].getIndirect(), 20);
+      srcId(i->src[0].getIndirect(0), 20);
    } else {
       assert(i->op == OP_PINTERP);
       code[0] = 0x00000009 | ((base & 0xc) << 6) | ((base >> 4) << 26);
@@ -1306,7 +1296,7 @@ CodeEmitterNVC0::emitSTORE(const Instruction *i)
 
    setAddress16(i->src[0]);
    srcId(i->src[1], 14);
-   srcId(i->src[0].getIndirect(), 20);
+   srcId(i->src[0].getIndirect(0), 20);
 
    emitPredicate(i);
 
@@ -1326,12 +1316,12 @@ CodeEmitterNVC0::emitLOAD(const Instruction *i)
    case FILE_MEMORY_LOCAL:  opc = 0xc0000000; break;
    case FILE_MEMORY_SHARED: opc = 0xc1000000; break;
    case FILE_MEMORY_CONST:
-      if (!i->src[0].isIndirect() && typeSizeof(i->dType) == 4) {
+      if (!i->src[0].isIndirect(0) && typeSizeof(i->dType) == 4) {
          emitMOV(i); // not sure if this is any better
          return;
       }
       opc = 0x14000000 | (i->src[0].get()->reg.fileIndex << 10);
-      code[0] = 0x00000006;
+      code[0] = 0x00000006 | (i->subOp << 8);
       break;
    default:
       assert(!"invalid memory file");
@@ -1343,7 +1333,7 @@ CodeEmitterNVC0::emitLOAD(const Instruction *i)
    defId(i->def[0], 14);
 
    setAddress16(i->src[0]);
-   srcId(i->src[0].getIndirect(), 20);
+   srcId(i->src[0].getIndirect(0), 20);
 
    emitPredicate(i);
 
@@ -1469,6 +1459,10 @@ CodeEmitterNVC0::emitInstruction(Instruction *insn)
       break;
    case OP_PFETCH:
       emitPFETCH(insn);
+      break;
+   case OP_EMIT:
+   case OP_RESTART:
+      emitOUT(insn);
       break;
    case OP_ADD:
    case OP_SUB:
@@ -1638,7 +1632,7 @@ CodeEmitterNVC0::getMinEncodingSize(const Instruction *i) const
    }
 
    for (int s = 0; i->srcExists(s); ++s) {
-      if (i->src[s].isIndirect())
+      if (i->src[s].isIndirect(0))
          return 8;
 
       if (i->src[s].getFile() == FILE_MEMORY_CONST) {

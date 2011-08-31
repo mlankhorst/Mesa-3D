@@ -196,10 +196,16 @@ NVC0LegalizePostRA::visit(BasicBlock *bb)
    // remove pseudo operations and non-fixed no-ops, split 64 bit operations
    for (i = bb->getFirst(); i; i = next) {
       next = i->next;
+      if (i->op == OP_EMIT || i->op == OP_RESTART) {
+         if (!i->getDef(0)->refCount())
+            i->setDef(0, NULL);
+         if (i->src[0].getFile() == FILE_IMMEDIATE)
+            i->setSrc(0, r63); // initial value must be 0
+      } else
       if (i->isNop()) {
          bb->remove(i);
       } else {
-         if (i->op != OP_MOV)
+         if (i->op != OP_MOV && i->op != OP_PFETCH)
             replaceZero(i);
          if (typeSizeof(i->dType) == 8)
             split64BitOp(i);
@@ -220,31 +226,49 @@ public:
    NVC0LoweringPass(Program *);
 
 private:
+   virtual bool visit(Function *);
    virtual bool visit(BasicBlock *);
    virtual bool visit(Instruction *);
 
    bool handleRDSV(Instruction *);
    bool handleWRSV(Instruction *);
+   bool handleEXPORT(Instruction *);
+   bool handleOUT(Instruction *);
    bool handleDIV(Instruction *);
    bool handleMOD(Instruction *);
-   bool handlePOW(Instruction *);
    bool handleSQRT(Instruction *);
-   bool handleEXPORT(Instruction *);
+   bool handlePOW(Instruction *);
    bool handleTEX(TexInstruction *);
    bool handleTXD(TexInstruction *);
    bool handleManualTXD(TexInstruction *);
 
    void checkPredicate(Instruction *);
 
+   void readTessCoord(LValue *dst, int c);
+
 private:
    const Target *const targ;
 
    BuildUtil bld;
+
+   LValue *gpEmitAddress;
 };
 
 NVC0LoweringPass::NVC0LoweringPass(Program *prog) : targ(prog->getTarget())
 {
    bld.setProgram(prog);
+}
+
+bool
+NVC0LoweringPass::visit(Function *fn)
+{
+   if (prog->getType() == Program::TYPE_GEOMETRY) {
+      assert(!strncmp(fn->getName(), "MAIN", 4));
+      // TODO: when we generate actual functions pass this value along somehow
+      bld.setPosition(BasicBlock::get(fn->cfg.getRoot()), false);
+      gpEmitAddress = bld.loadImm(NULL, 0)->asLValue();
+   }
+   return true;
 }
 
 bool
@@ -396,26 +420,54 @@ NVC0LoweringPass::handleWRSV(Instruction *i)
    Symbol *sym;
    uint32_t addr;
 
-   // must replace, $sreg are not writable
+   // must replace, $sreg are not writeable
    addr = targ->getSVAddress(FILE_SHADER_OUTPUT, i->getSrc(0)->asSym());
    if (addr >= 0x400)
       return false;
    sym = bld.mkSymbol(FILE_SHADER_OUTPUT, 0, i->sType, addr);
 
-   st = bld.mkStore(OP_EXPORT, i->dType,
-                    sym, i->getIndirect(0), i->getSrc(1));
-
+   st = bld.mkStore(OP_EXPORT, i->dType, sym, i->getIndirect(0, 0),
+                    i->getSrc(1));
    st->perPatch = i->perPatch;
 
    bld.getBB()->remove(i);
    return true;
 }
 
+void
+NVC0LoweringPass::readTessCoord(LValue *dst, int c)
+{
+   Value *laneid = bld.getSSA();
+   Value *x, *y;
+
+   bld.mkOp1(OP_RDSV, TYPE_U32, laneid, bld.mkSysVal(SV_LANEID, 0));
+
+   if (c == 0) {
+      x = dst;
+      y = NULL;
+   } else
+   if (c == 1) {
+      x = NULL;
+      y = dst;
+   } else {
+      assert(c == 2);
+      x = bld.getSSA();
+      y = bld.getSSA();
+   }
+   if (x)
+      bld.mkVFETCH(x, TYPE_F32, FILE_SHADER_OUTPUT, 0x2f0, NULL, laneid);
+   if (y)
+      bld.mkVFETCH(x, TYPE_F32, FILE_SHADER_OUTPUT, 0x2f4, NULL, laneid);
+
+   if (c == 2) {
+      bld.mkOp2(OP_ADD, TYPE_F32, dst, x, y);
+      bld.mkOp2(OP_SUB, TYPE_F32, dst, bld.loadImm(NULL, 1.0f), dst);
+   }
+}
+
 bool
 NVC0LoweringPass::handleRDSV(Instruction *i)
 {
-   const SVSemantic sn = i->getSrc(0)->reg.data.sv.sv;
-   const int si = i->getSrc(0)->reg.data.sv.index;
    Symbol *sym = i->getSrc(0)->asSym();
    Value *vtx = NULL;
    Instruction *ld;
@@ -424,7 +476,7 @@ NVC0LoweringPass::handleRDSV(Instruction *i)
    if (addr >= 0x400) // mov $sreg
       return true;
 
-   switch (sn) {
+   switch (i->getSrc(0)->reg.data.sv.sv) {
    case SV_POSITION:
       assert(prog->getType() == Program::TYPE_FRAGMENT);
       ld = New_Instruction(func, OP_LINTERP, TYPE_F32);
@@ -435,30 +487,13 @@ NVC0LoweringPass::handleRDSV(Instruction *i)
       break;
    case SV_TESS_COORD:
       assert(prog->getType() == Program::TYPE_TESSELLATION_EVAL);
-      sym = bld.mkSysVal(SV_LANEID, 0);
-      vtx = bld.mkOp1v(OP_RDSV, TYPE_U32, bld.getSSA(), sym);
-      if (si == 2) {
-         // using output file because we need the "O" specified on ld a[]
-         sym = bld.mkSymbol(FILE_SHADER_OUTPUT, 0, TYPE_F32, 0x2f0);
-         Value *x = bld.mkOp2v(OP_VFETCH, TYPE_F32, bld.getSSA(), sym, vtx);
-         sym = bld.mkSymbol(FILE_SHADER_OUTPUT, 0, TYPE_F32, 0x2f4);
-         Value *y = bld.mkOp2v(OP_VFETCH, TYPE_F32, bld.getSSA(), sym, vtx);
-
-         bld.mkOp2(OP_SUB, TYPE_F32, i->getDef(0), bld.loadImm(NULL, 1.0f),
-                   bld.mkOp2v(OP_ADD, TYPE_F32, bld.getSSA(), x, y));
-      } else {
-         sym = bld.mkSymbol(FILE_SHADER_OUTPUT, 0, TYPE_F32, addr);
-         bld.mkOp2(OP_VFETCH, TYPE_F32, i->getDef(0), sym, vtx);
-      }
+      readTessCoord(i->getDef(0)->asLValue(), i->getSrc(0)->reg.data.sv.index);
       break;
    default:
       if (prog->getType() == Program::TYPE_TESSELLATION_EVAL)
          vtx = bld.mkOp1v(OP_PFETCH, TYPE_U32, bld.getSSA(), bld.mkImm(0));
-      sym = bld.mkSymbol(FILE_SHADER_INPUT, 0, TYPE_NONE, addr);
-      ld = bld.mkOp1(OP_VFETCH, i->dType, i->getDef(0), sym);
-      ld->setSrc(1, vtx);
-      if (i->src[0].isIndirect())
-         ld->setIndirect(0, i->getIndirect(0));
+      ld = bld.mkVFETCH(i->getDef(0), i->dType,
+                        FILE_SHADER_INPUT, addr, i->getIndirect(0, 0), vtx);
       ld->perPatch = i->perPatch;
       if (1) // XXX: integer support
          bld.mkCvt(OP_CVT, TYPE_F32, i->getDef(0), TYPE_U32, i->getDef(0));
@@ -527,8 +562,8 @@ NVC0LoweringPass::handleEXPORT(Instruction *i)
    if (prog->getType() == Program::TYPE_FRAGMENT) {
       int id = i->getSrc(0)->reg.data.offset / 4;
 
-      if (i->src[0].isIndirect())
-         return false; // TODO, ugly
+      if (i->src[0].isIndirect(0)) // TODO, ugly
+         return false;
       i->op = OP_MOV;
       i->src[0].set(i->src[1]);
       i->setSrc(1, NULL);
@@ -536,6 +571,25 @@ NVC0LoweringPass::handleEXPORT(Instruction *i)
       i->getDef(0)->reg.data.id = id;
 
       prog->maxGPR = MAX2(prog->maxGPR, id);
+   } else
+   if (prog->getType() == Program::TYPE_GEOMETRY) {
+      i->setIndirect(0, 1, gpEmitAddress);
+   }
+   return true;
+}
+
+bool
+NVC0LoweringPass::handleOUT(Instruction *i)
+{
+   if (i->op == OP_RESTART && i->prev && i->prev->op == OP_EMIT) {
+      i->prev->subOp = NV50_IR_SUBOP_EMIT_RESTART;
+      Del_Instruction(prog, i);
+   } else {
+      assert(gpEmitAddress);
+      i->setDef(0, gpEmitAddress);
+      if (i->srcExists(0))
+         i->setSrc(1, i->getSrc(0));
+      i->setSrc(0, gpEmitAddress);
    }
    return true;
 }
@@ -563,7 +617,7 @@ NVC0LoweringPass::checkPredicate(Instruction *insn)
 //
 // - add quadop dance for texturing
 // - put FP outputs in GPRs
-// - convert instruction sequences (POW)
+// - convert instruction sequences
 //
 bool
 NVC0LoweringPass::visit(Instruction *i)
@@ -603,6 +657,9 @@ NVC0LoweringPass::visit(Instruction *i)
       return handleSQRT(i);
    case OP_EXPORT:
       return handleEXPORT(i);
+   case OP_EMIT:
+   case OP_RESTART:
+      return handleOUT(i);
    case OP_RDSV:
       return handleRDSV(i);
    case OP_WRSV:

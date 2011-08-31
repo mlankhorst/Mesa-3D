@@ -1109,7 +1109,7 @@ Converter::interpolate(const sm4_op& op, int c, int i)
    if (opr == OP_PINTERP)
       insn->setSrc(1, fragCoord[3]);
    if (ptr)
-      insn->setIndirect(0, ptr);
+      insn->setIndirect(0, 0, ptr);
 
    insn->setInterpolate(interpMode[idx]);
 

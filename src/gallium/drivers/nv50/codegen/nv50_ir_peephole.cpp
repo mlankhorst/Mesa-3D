@@ -169,8 +169,8 @@ LoadPropagation::visit(BasicBlock *bb)
 
          // propagate !
          i->setSrc(s, ld->getSrc(0));
-         if (ld->src[0].isIndirect())
-            i->setIndirect(s, ld->getIndirect(0));
+         if (ld->src[0].isIndirect(0))
+            i->setIndirect(s, 0, ld->getIndirect(0, 0));
 
          if (ld->getDef(0)->refCount() == 0)
             Del_Instruction(prog, ld);
@@ -934,11 +934,11 @@ private:
    public:
       Record *next;
       Instruction *insn;
-      const Value *rel;
+      const Value *rel[2];
       const Value *base;
       int32_t offset;
+      int8_t fileIndex;
       uint8_t size;
-      uint8_t fileIndex;
       bool locked;
       Record *prev;
 
@@ -1073,19 +1073,14 @@ MemoryOpt::combineSt(Record *rec, Instruction *st)
    int size = sizeRc + sizeSt;
    int j, k;
    Value *src[4]; // no modifiers in ValueRef allowed for st
+   Value *extra[3];
 
    if (size == 12) // XXX: check if EXPORT a[] can do this after all
       return false;
    if (size == 8 && MIN2(offRc, offSt) & 0x7)
       return false;
 
-   // save predicate and indirect address
-   Value *rel = st->getIndirect(0);
-   Value *pred = st->getPredicate();
-   if (rel)
-      st->setIndirect(0, NULL);
-   if (pred)
-      st->setPredicate(st->cc, NULL);
+   st->takeExtraSources(0, extra); // save predicate and indirect address
 
    if (offRc < offSt) {
       // save values from @st
@@ -1112,12 +1107,7 @@ MemoryOpt::combineSt(Record *rec, Instruction *st)
       }
       rec->offset = offSt;
    }
-
-   // restore pointer and predicate
-   if (rel)
-      st->setIndirect(0, rel);
-   if (pred)
-      st->setPredicate(st->cc, pred);
+   st->putExtraSources(0, extra); // restore pointer and predicate
 
    rec->insn->bb->remove(rec->insn);
    Del_Instruction(prog, rec->insn);
@@ -1132,7 +1122,8 @@ MemoryOpt::Record::set(const Instruction *ldst)
 {
    const Symbol *mem = ldst->getSrc(0)->asSym();
    fileIndex = mem->reg.fileIndex;
-   rel = ldst->getIndirect(0);
+   rel[0] = ldst->getIndirect(0, 0);
+   rel[1] = ldst->getIndirect(0, 1);
    offset = mem->reg.data.offset;
    base = mem->getBase();
    size = typeSizeof(ldst->sType);
@@ -1183,15 +1174,16 @@ MemoryOpt::Record *
 MemoryOpt::findRecord(const Instruction *insn, bool load, bool& isAdj) const
 {
    const Symbol *sym = insn->getSrc(0)->asSym();
-   const Value *ptr = insn->getIndirect(0);
    const int size = typeSizeof(insn->sType);
    Record *rec = NULL;
    Record *it = load ? loads[sym->reg.file] : stores[sym->reg.file];
 
    for (; it; it = it->next) {
-      if (it->locked || it->fileIndex != sym->reg.fileIndex)
-         continue;
-      if ((it->offset >> 4) != (sym->reg.data.offset >> 4) || (it->rel != ptr))
+      if (it->locked ||
+          (it->offset >> 4) != (sym->reg.data.offset >> 4) ||
+          it->rel[0] != insn->getIndirect(0, 0) ||
+          it->fileIndex != sym->reg.fileIndex ||
+          it->rel[1] != insn->getIndirect(0, 1))
          continue;
 
       if (it->offset < sym->reg.data.offset) {
@@ -1268,6 +1260,7 @@ bool
 MemoryOpt::replaceStFromSt(Instruction *restrict st, Record *rec)
 {
    const Instruction *const ri = rec->insn;
+   Value *extra[3];
 
    int32_t offS = st->getSrc(0)->reg.data.offset;
    int32_t offR = rec->offset;
@@ -1276,12 +1269,7 @@ MemoryOpt::replaceStFromSt(Instruction *restrict st, Record *rec)
 
    rec->size = MAX2(endS, endR) - MIN2(offS, offR);
 
-   Value *prd = st->getPredicate();
-   Value *rel = st->getIndirect(0);
-   if (rel)
-      st->setIndirect(0, NULL);
-   if (prd)
-      st->setPredicate(st->cc, NULL);
+   st->takeExtraSources(0, extra);
 
    if (offR < offS) {
       Value *save[4];
@@ -1301,10 +1289,7 @@ MemoryOpt::replaceStFromSt(Instruction *restrict st, Record *rec)
       for (; offR < endR; offR += ri->getSrc(j++)->reg.size)
          st->setSrc(s++, ri->getSrc(j));
    }
-   if (prd)
-      st->setPredicate(st->cc, prd);
-   if (rel)
-      st->setIndirect(0, rel);
+   st->putExtraSources(0, extra);
 
    Del_Instruction(prog, rec->insn);
 
@@ -1391,10 +1376,14 @@ MemoryOpt::runOpt(BasicBlock *bb)
       if (ldst->op == OP_STORE || ldst->op == OP_EXPORT) {
          isLoad = false;
       } else {
+         // TODO: maybe have all fixed ops act as barrier ?
          if (ldst->op == OP_CALL) {
             purgeRecords(NULL, FILE_MEMORY_LOCAL);
             purgeRecords(NULL, FILE_MEMORY_GLOBAL);
             purgeRecords(NULL, FILE_MEMORY_SHARED);
+            purgeRecords(NULL, FILE_SHADER_OUTPUT);
+         } else
+         if (ldst->op == OP_EMIT || ldst->op == OP_RESTART) {
             purgeRecords(NULL, FILE_SHADER_OUTPUT);
          }
          continue;
@@ -1476,7 +1465,7 @@ FlatteningPass::isConstantCondition(Value *pred)
       if (ld) {
          if (ld->op != OP_MOV && ld->op != OP_LOAD)
             return false;
-         if (ld->src[0].isIndirect())
+         if (ld->src[0].isIndirect(0))
             return false;
          file = ld->src[0].getFile();
       } else {
@@ -1698,7 +1687,6 @@ Instruction::isActionEqual(const Instruction *that) const
       return false;
    } else {
       if (this->atomic != that->atomic ||
-          this->restart != that->restart ||
           this->ipa != that->ipa ||
           this->lanes != that->lanes ||
           this->perPatch != that->perPatch)

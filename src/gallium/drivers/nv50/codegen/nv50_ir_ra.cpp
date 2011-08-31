@@ -910,8 +910,8 @@ RegAlloc::InsertConstraintsPass::visit(BasicBlock *bb)
             addConstraint(i, 1, s - 1);
       } else
       if (i->op == OP_LOAD) {
-         if (i->src[0].isIndirect() && typeSizeof(i->dType) >= 8)
-            addHazard(i, i->src[0].getIndirect());
+         if (i->src[0].isIndirect(0) && typeSizeof(i->dType) >= 8)
+            addHazard(i, i->src[0].getIndirect(0));
       }
    }
    return true;

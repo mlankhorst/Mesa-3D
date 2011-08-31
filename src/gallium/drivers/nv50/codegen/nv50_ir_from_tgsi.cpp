@@ -572,6 +572,9 @@ bool Source::scanSource()
    if (info->type == PIPE_SHADER_FRAGMENT) {
       info->prop.fp.writesDepth = scan.writes_z;
       info->prop.fp.usesDiscard = scan.uses_kill;
+   } else
+   if (info->type == PIPE_SHADER_GEOMETRY) {
+      info->prop.gp.instanceCount = 1; // default value
    }
 
    info->immd.data = (uint32_t *)MALLOC(scan.immediate_count * 16);
@@ -616,6 +619,11 @@ void Source::scanProperty(const struct tgsi_full_property *prop)
    case TGSI_PROPERTY_GS_MAX_OUTPUT_VERTICES:
       info->prop.gp.maxVertices = prop->u[0].Data;
       break;
+#if 0
+   case TGSI_PROPERTY_GS_INSTANCE_COUNT:
+      info->prop.gp.instanceCount = prop->u[0].Data;
+      break;
+#endif
    case TGSI_PROPERTY_FS_COLOR0_WRITES_ALL_CBUFS:
       info->prop.fp.separateFragData = TRUE;
       break;
@@ -839,9 +847,10 @@ public:
 
 private:
    uint32_t fetchImm32(int s, int c);
+   Value *getVertexBase(int s);
    Value *fetchSrc(int s, int c);
    Value *acquireDst(int d, int c);
-   void storeDst(int d, int c, Value *val);
+   void storeDst(int d, int c, Value *);
 
    Value *fetchSrc(const tgsi::Instruction::SrcRegister src, int c, Value *ptr);
    void storeDst(const tgsi::Instruction::DstRegister dst, int c,
@@ -894,6 +903,7 @@ private:
    Value *clipVtx[4];
 
    Value *vtxBase[5]; // base address of vertex in primitive (for TP/GP)
+   uint8_t vtxBaseValid;
 
    Stack condBBs;  // fork BB, then else clause BB
    Stack joinBBs;  // fork BB, for inserting join ops on ENDIF
@@ -976,7 +986,7 @@ Converter::interpolate(tgsi::Instruction::SrcRegister src, int c, Value *ptr)
    if (op == OP_PINTERP)
       insn->setSrc(1, fragCoord[3]);
    if (ptr)
-      insn->setIndirect(0, ptr);
+      insn->setIndirect(0, 0, ptr);
 
    insn->setInterpolate(mode);
 
@@ -1008,17 +1018,50 @@ Converter::fetchImm32(int s, int c)
 }
 
 Value *
+Converter::getVertexBase(int s)
+{
+   assert(s < 5);
+   if (!(vtxBaseValid & (1 << s))) {
+      const int index = tgsi.getSrc(s).getIndex(1);
+      Value *rel = NULL;
+      if (tgsi.getSrc(s).isIndirect(1))
+         rel = fetchSrc(tgsi.getSrc(s).getIndirect(1), 0, NULL);
+      vtxBaseValid |= 1 << s;
+      vtxBase[s] = mkOp2v(OP_PFETCH, TYPE_U32, getSSA(), mkImm(index), rel);
+   }
+   return vtxBase[s];
+}
+
+Value *
 Converter::fetchSrc(int s, int c)
 {
    Value *res;
-   Value *ptr = NULL;
+   Value *ptr = NULL, *dimRel = NULL;
 
    tgsi::Instruction::SrcRegister src = tgsi.getSrc(s);
 
    if (src.isIndirect(0))
       ptr = fetchSrc(src.getIndirect(0), 0, NULL);
 
+   if (src.is2D()) {
+      switch (src.getFile()) {
+      case TGSI_FILE_INPUT:
+         dimRel = getVertexBase(s);
+         break;
+      case TGSI_FILE_CONSTANT:
+         // on NVC0, this is valid and c{I+J}[k] == cI[(J << 16) + k]
+         if (src.isIndirect(1))
+            dimRel = fetchSrc(src.getIndirect(1), 0, 0);
+         break;
+      default:
+         break;
+      }
+   }
+
    res = fetchSrc(src, c, ptr);
+
+   if (dimRel)
+      res->getInsn()->setIndirect(0, 1, dimRel);
 
    return applySrcMod(res, s, c);
 }
@@ -1042,12 +1085,9 @@ Converter::fetchSrc(tgsi::Instruction::SrcRegister src, int c, Value *ptr)
       return loadImm(NULL, info->immd.data[idx * 4 + swz]);
 
    case TGSI_FILE_CONSTANT:
-      assert(!src.isIndirect(1));
       return mkLoad(TYPE_U32, srcToSym(src, c), ptr);
 
    case TGSI_FILE_INPUT:
-      if (src.isIndirect(1)) // TODO (TCP,TEP,GP)
-         assert(0);
       if (prog->getType() == Program::TYPE_FRAGMENT)
          return interpolate(src, c, ptr);
       return mkLoad(TYPE_U32, srcToSym(src, c), ptr);
@@ -1060,10 +1100,10 @@ Converter::fetchSrc(tgsi::Instruction::SrcRegister src, int c, Value *ptr)
    case TGSI_FILE_RESOURCE:
    case TGSI_FILE_SAMPLER:
    case TGSI_FILE_IMMEDIATE_ARRAY:
+   case TGSI_FILE_TEMPORARY_ARRAY:
    case TGSI_FILE_NULL:
-   case TGSI_FILE_TEMPORARY_ARRAY: // XXX: undefined behaviour
    default:
-      assert(!"invalid/unhandled TGSI file");
+      assert(!"invalid/unhandled TGSI source file");
       return NULL;
    }
 }
@@ -1762,11 +1802,10 @@ Converter::handleInstruction(const struct tgsi_full_instruction *insn)
          mkCvt(OP_CVT, dstTy, dst0[c], srcTy, fetchSrc(0, c));
       break;
    case TGSI_OPCODE_EMIT:
-      // vertex stream 0
-      mkOp1(OP_EMIT, TYPE_NONE, NULL, mkImm(0))->fixed = 1;
-      break;
    case TGSI_OPCODE_ENDPRIM:
-      mkOp1(OP_RESTART, TYPE_NONE, NULL, mkImm(0))->fixed = 1;
+      // get vertex stream if specified (must be immediate)
+      src0 = tgsi.srcCount() ? mkImm(fetchImm32(0, 0)) : zero;
+      mkOp1(op, TYPE_U32, NULL, src0)->fixed = 1;
       break;
    case TGSI_OPCODE_IF:
    {
@@ -1943,6 +1982,7 @@ Converter::handleInstruction(const struct tgsi_full_instruction *insn)
          storeDst(0, c, rDst0[c]);
       }
    }
+   vtxBaseValid = 0;
 
    return true;
 }
@@ -2001,6 +2041,8 @@ Converter::Converter(Program *ir, const tgsi::Source *src)
    oData.setup(0, code->fileSize(TGSI_FILE_OUTPUT), 4, 4, FILE_GPR);
 
    zero = mkImm((uint32_t)0);
+
+   vtxBaseValid = 0;
 }
 
 Converter::~Converter()

@@ -79,8 +79,8 @@ enum operation
    OP_DISCARD,
    OP_EXIT,
    OP_MEMBAR,
-   OP_VFETCH,    // may have extra source for vertex base address
-   OP_PFETCH,    // fetch base address for vertex data
+   OP_VFETCH, // indirection 0 in attribute space, indirection 1 is vertex base
+   OP_PFETCH, // fetch base address of vertex src0 (immediate) [+ src1]
    OP_EXPORT,
    OP_LINTERP,
    OP_PINTERP,
@@ -110,7 +110,11 @@ enum operation
    OP_LAST
 };
 
-#define NV50_IR_SUBOP_MUL_HIGH 1
+#define NV50_IR_SUBOP_MUL_HIGH     1
+#define NV50_IR_SUBOP_EMIT_RESTART 1
+#define NV50_IR_SUBOP_LDC_IL       1
+#define NV50_IR_SUBOP_LDC_IS       2
+#define NV50_IR_SUBOP_LDC_ISL      3
 
 enum DataType
 {
@@ -276,7 +280,7 @@ class ImmediateValue;
 struct Storage
 {
    DataFile file;
-   uint8_t fileIndex;
+   int8_t fileIndex; // signed, may be indirect for CONST[]
    uint8_t size; // this should match the Instruction type's size
    DataType type; // mainly for pretty printing
    union {
@@ -312,8 +316,10 @@ struct Storage
 #define NV50_IR_INTERP_FLAT        (2 << 0)
 #define NV50_IR_INTERP_SC          (3 << 0) // what exactly is that ?
 #define NV50_IR_INTERP_SAMPLE_MASK 0xc
+#define NV50_IR_INTERP_DEFAULT     (0 << 2)
 #define NV50_IR_INTERP_CENTROID    (1 << 2)
 #define NV50_IR_INTERP_OFFSET      (2 << 2)
+#define NV50_IR_INTERP_SAMPLEID    (3 << 2)
 
 // do we really want this to be a class ?
 class Modifier
@@ -366,8 +372,8 @@ public:
    Instruction *getInsn() const { return insn; }
    inline void setInsn(Instruction *inst) { insn = inst; }
 
-   inline bool isIndirect() const { return indirect >= 0; }
-   inline const ValueRef *getIndirect() const;
+   inline bool isIndirect(int dim) const { return indirect[dim] >= 0; }
+   inline const ValueRef *getIndirect(int dim) const;
 
    inline Modifier getMod() { return mod; }
    inline void setMod(Modifier m) { mod = m; }
@@ -394,8 +400,8 @@ public:
 
 public:
    Modifier mod;
-   int8_t indirect; // >= 0 if relative to lvalue in insn->src[indirect]
-   uint8_t comp;    // select part of larger value (size depends on insn)
+   int8_t indirect[2]; // >= 0 if relative to lvalue in insn->src[indirect[i]]
+   uint8_t swizzle;
 
    bool usedAsPtr; // for printing
 
@@ -530,7 +536,9 @@ public:
    virtual bool equals(const Value *that, bool strict) const;
 
    virtual int print(char *, size_t, DataType ty = TYPE_NONE) const;
-   int print(char *, size_t, Value *, DataType ty = TYPE_NONE) const;
+
+   // print with indirect values
+   int print(char *, size_t, Value *, Value *, DataType ty = TYPE_NONE) const;
 
    inline void setFile(DataFile file, ubyte fileIndex = 0)
    {
@@ -595,11 +603,11 @@ public:
    inline void setSrc(int s, Value *val) { src[s].set(val); }
    void setSrc(int s, ValueRef&);
    void swapSources(int a, int b);
-   bool setIndirect(int s, Value *);
+   bool setIndirect(int s, int dim, Value *);
 
    inline Value *getDef(int d) const { return def[d].get(); }
    inline Value *getSrc(int s) const { return src[s].get(); }
-   inline Value *getIndirect(int s) const;
+   inline Value *getIndirect(int s, int dim) const;
 
    inline bool defExists(int d) const { return d < 4 && def[d].exists(); }
    inline bool srcExists(int s) const { return s < 8 && src[s].exists(); }
@@ -612,6 +620,10 @@ public:
 
    unsigned int defCount(unsigned int mask) const;
    unsigned int srcCount(unsigned int mask) const;
+
+   // save & remove / set indirect[0,1] and predicate source
+   void takeExtraSources(int s, Value *[3]);
+   void putExtraSources(int s, Value *[3]);
 
    inline void setType(DataType type) { dType = sType = type; }
 
@@ -660,7 +672,6 @@ public:
    unsigned atomic     : 1;
    unsigned ftz        : 1; // flush denormal to zero
    unsigned dnz        : 1; // denormals are zero
-   unsigned restart    : 1; // restart primitive flag on EMIT
    unsigned ipa        : 4; // interpolation mode
    unsigned lanes      : 4;
    unsigned perPatch   : 1;

@@ -79,7 +79,7 @@ BuildUtil::mkLoad(DataType ty, Symbol *mem, Value *ptr)
    insn->setDef(0, def);
    insn->setSrc(0, mem);
    if (ptr)
-      insn->setIndirect(0, ptr);
+      insn->setIndirect(0, 0, ptr);
 
    insert(insn);
    return def;
@@ -94,7 +94,22 @@ BuildUtil::mkStore(operation op, DataType ty, Symbol *mem, Value *ptr,
    insn->setSrc(0, mem);
    insn->setSrc(1, stVal);
    if (ptr)
-      insn->setIndirect(0, ptr);
+      insn->setIndirect(0, 0, ptr);
+
+   insert(insn);
+   return insn;
+}
+
+Instruction *
+BuildUtil::mkVFETCH(Value *dst, DataType ty, DataFile file, int32_t offset,
+                    Value *attrRel, Value *primRel)
+{
+   Symbol *sym = mkSymbol(file, 0, ty, offset);
+
+   Instruction *insn = mkOp1(OP_VFETCH, ty, dst, sym);
+
+   insn->setIndirect(0, 0, attrRel);
+   insn->setIndirect(0, 1, primRel);
 
    insert(insn);
    return insn;
@@ -316,7 +331,7 @@ BuildUtil::loadImm(Value *dst, uint64_t u)
 }
 
 Symbol *
-BuildUtil::mkSymbol(DataFile file, uint8_t fileIndex, DataType ty,
+BuildUtil::mkSymbol(DataFile file, int8_t fileIndex, DataType ty,
                     uint32_t baseAddr)
 {
    Symbol *sym = New_Symbol(prog, file, fileIndex);

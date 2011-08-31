@@ -365,7 +365,7 @@ TargetNVC0::insnCanLoad(const Instruction *i, int s,
       return false;
 
    // indirect loads can only be done by OP_LOAD/VFETCH/INTERP on nvc0
-   if (ld->src[0].isIndirect())
+   if (ld->src[0].isIndirect(0))
       return false;
 
    for (int k = 0; i->srcExists(k); ++k) {
