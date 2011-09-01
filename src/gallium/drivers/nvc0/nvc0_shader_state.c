@@ -37,12 +37,9 @@ nvc0_program_update_context_state(struct nvc0_context *nvc0,
       nvc0->state.tls_required &= ~(1 << stage);
 }
 
-static boolean
+static INLINE boolean
 nvc0_program_validate(struct nvc0_context *nvc0, struct nvc0_program *prog)
 {
-   int ret;
-   unsigned size;
-
    if (prog->translated)
       return TRUE;
 
@@ -50,25 +47,7 @@ nvc0_program_validate(struct nvc0_context *nvc0, struct nvc0_program *prog)
    if (!prog->translated)
       return FALSE;
 
-   size = align(prog->code_size + NVC0_SHADER_HEADER_SIZE, 0x100);
-
-   ret = nouveau_resource_alloc(nvc0->screen->text_heap, size, prog,
-                                &prog->res);
-   if (ret)
-      return FALSE;
-
-   prog->code_base = prog->res->start;
-
-   nvc0_m2mf_push_linear(&nvc0->base, nvc0->screen->text, prog->code_base,
-                         NOUVEAU_BO_VRAM, NVC0_SHADER_HEADER_SIZE, prog->hdr);
-   nvc0_m2mf_push_linear(&nvc0->base, nvc0->screen->text,
-                         prog->code_base + NVC0_SHADER_HEADER_SIZE,
-                         NOUVEAU_BO_VRAM, prog->code_size, prog->code);
-
-   BEGIN_RING(nvc0->screen->base.channel, RING_3D(MEM_BARRIER), 1);
-   OUT_RING  (nvc0->screen->base.channel, 0x1111);
-
-   return TRUE;
+   return nvc0_program_upload_code(nvc0, prog);
 }
 
 void
