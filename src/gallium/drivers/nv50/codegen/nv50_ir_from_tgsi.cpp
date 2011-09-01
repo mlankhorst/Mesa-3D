@@ -1294,6 +1294,7 @@ Converter::loadProjTexCoords(Value *dst[4], Value *src[4], unsigned int mask)
    if (insn->op == OP_PINTERP) {
       bb->insertTail(insn = insn->clone(true));
       insn->op = OP_LINTERP;
+      insn->setInterpolate(NV50_IR_INTERP_LINEAR | insn->getSampleMode());
       insn->setSrc(1, NULL);
       proj = insn->getDef(0);
    }
@@ -1796,6 +1797,9 @@ Converter::handleInstruction(const struct tgsi_full_instruction *insn)
       break;
    case TGSI_OPCODE_F2I:
    case TGSI_OPCODE_F2U:
+      FOR_EACH_DST_ENABLED_CHANNEL(0, c, tgsi)
+         mkCvt(OP_CVT, dstTy, dst0[c], srcTy, fetchSrc(0, c))->rnd = ROUND_Z;
+      break;
    case TGSI_OPCODE_I2F:
    case TGSI_OPCODE_U2F:
       FOR_EACH_DST_ENABLED_CHANNEL(0, c, tgsi)
