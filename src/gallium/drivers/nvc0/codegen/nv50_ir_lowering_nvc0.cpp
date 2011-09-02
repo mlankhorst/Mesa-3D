@@ -455,9 +455,9 @@ NVC0LoweringPass::readTessCoord(LValue *dst, int c)
       y = bld.getSSA();
    }
    if (x)
-      bld.mkVFETCH(x, TYPE_F32, FILE_SHADER_OUTPUT, 0x2f0, NULL, laneid);
+      bld.mkFetch(x, TYPE_F32, FILE_SHADER_OUTPUT, 0x2f0, NULL, laneid);
    if (y)
-      bld.mkVFETCH(x, TYPE_F32, FILE_SHADER_OUTPUT, 0x2f4, NULL, laneid);
+      bld.mkFetch(x, TYPE_F32, FILE_SHADER_OUTPUT, 0x2f4, NULL, laneid);
 
    if (c == 2) {
       bld.mkOp2(OP_ADD, TYPE_F32, dst, x, y);
@@ -492,11 +492,9 @@ NVC0LoweringPass::handleRDSV(Instruction *i)
    default:
       if (prog->getType() == Program::TYPE_TESSELLATION_EVAL)
          vtx = bld.mkOp1v(OP_PFETCH, TYPE_U32, bld.getSSA(), bld.mkImm(0));
-      ld = bld.mkVFETCH(i->getDef(0), i->dType,
-                        FILE_SHADER_INPUT, addr, i->getIndirect(0, 0), vtx);
+      ld = bld.mkFetch(i->getDef(0), i->dType,
+                       FILE_SHADER_INPUT, addr, i->getIndirect(0, 0), vtx);
       ld->perPatch = i->perPatch;
-      if (1) // XXX: integer support
-         bld.mkCvt(OP_CVT, TYPE_F32, i->getDef(0), TYPE_U32, i->getDef(0));
       break;
    }
    bld.getBB()->remove(i);
@@ -609,7 +607,7 @@ NVC0LoweringPass::checkPredicate(Instruction *insn)
    // CAUTION: don't use pdst->getInsn, the definition might not be unique,
    //  delay turning PSET(FSET(x,y),0) into PSET(x,y) to a later pass
 
-   bld.mkCmp(OP_SET, CC_NEU, TYPE_U32, pdst, pred, bld.mkImm(0));
+   bld.mkCmp(OP_SET, CC_NEU, TYPE_U32, pdst, bld.mkImm(0), pred);
 
    insn->setPredicate(insn->cc, pdst);
 }

@@ -42,8 +42,8 @@ public:
    Instruction *mkMovToReg(int id, Value *);
    Instruction *mkMovFromReg(Value *, int id);
 
-   Instruction *mkVFETCH(Value *, DataType, DataFile, int32_t offset,
-                         Value *attrRel, Value *primRel);
+   Instruction *mkFetch(Value *, DataType, DataFile, int32_t offset,
+                        Value *attrRel, Value *primRel);
 
    Instruction *mkCvt(operation, DataType, Value *, DataType, Value *);
    Instruction *mkCmp(operation, CondCode, DataType,

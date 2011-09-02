@@ -65,6 +65,7 @@ private:
    void emitIMAD(const Instruction *);
    void emitFMAD(const Instruction *);
 
+   void emitNOT(Instruction *);
    void emitLogicOp(const Instruction *, uint8_t subOp);
    void emitPOPC(const Instruction *);
    void emitINSBF(const Instruction *);
@@ -195,8 +196,8 @@ void
 CodeEmitterNVC0::emitPredicate(const Instruction *i)
 {
    if (i->predSrc >= 0) {
-      assert(i->src[i->predSrc].get()->reg.file == FILE_PREDICATE);
-      srcId(i->src[i->predSrc], 6);
+      assert(i->getPredicate()->reg.file == FILE_PREDICATE);
+      srcId(i->src[i->predSrc], 10);
       if (i->cc == CC_NOT_P)
          code[0] |= 0x2000; // negate
    } else {
@@ -576,6 +577,14 @@ CodeEmitterNVC0::emitIMAD(const Instruction *i)
 
    if (i->subOp == NV50_IR_SUBOP_MUL_HIGH)
       code[0] |= 1 << 6;
+}
+
+void
+CodeEmitterNVC0::emitNOT(Instruction *i)
+{
+   assert(i->encSize == 8);
+   i->src[1].set(i->src[0]);
+   emitForm_A(i, HEX64(68000000, 000001c3));
 }
 
 void
@@ -1483,6 +1492,9 @@ CodeEmitterNVC0::emitInstruction(Instruction *insn)
          emitFMAD(insn);
       else
          emitIMAD(insn);
+      break;
+   case OP_NOT:
+      emitNOT(insn);
       break;
    case OP_AND:
       emitLogicOp(insn, 0);

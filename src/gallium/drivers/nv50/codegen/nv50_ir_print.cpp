@@ -142,7 +142,7 @@ static const char *DataTypeStr[] =
 
 static const char *RoundModeStr[] =
 {
-   "", "rm", "rz" "rp", "rni", "rmi", "rzi", "rpi"
+   "", "rm", "rz", "rp", "rni", "rmi", "rzi", "rpi"
 };
 
 static const char *CondCodeStr[] =

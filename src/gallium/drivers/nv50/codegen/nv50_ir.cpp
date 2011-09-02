@@ -931,12 +931,12 @@ nv50_ir_generate_code(struct nv50_ir_prog_info *info)
    case PIPE_IR_GLSL:
       return -1;
    case PIPE_IR_SM4:
-      ret = prog->makeFromSM4(info) ? 0 : -1;
+      ret = prog->makeFromSM4(info) ? 0 : -2;
       break;
    case PIPE_IR_TGSI:
 #endif
    default:
-      ret = prog->makeFromTGSI(info) ? 0 : -1;
+      ret = prog->makeFromTGSI(info) ? 0 : -2;
       break;
    }
    if (ret < 0)

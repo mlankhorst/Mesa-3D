@@ -1711,11 +1711,13 @@ Instruction::isResultEqual(const Instruction *that) const
 {
    unsigned int d, s;
 
-   if (!this->defExists(0))
+   // NOTE: location of discard only affects tex with liveOnly and quadops
+   if (!this->defExists(0) && this->op != OP_DISCARD)
       return false;
 
    if (!isActionEqual(that))
       return false;
+
    if (this->predSrc != that->predSrc)
       return false;
 
@@ -1802,6 +1804,7 @@ LocalCSE::visit(BasicBlock *bb)
                   ir->def[d].replace(ik->getDef(d), false);
                Del_Instruction(prog, ir);
                ir = NULL;
+               ++replaced;
                break;
             }
          }

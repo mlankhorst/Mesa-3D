@@ -101,8 +101,8 @@ BuildUtil::mkStore(operation op, DataType ty, Symbol *mem, Value *ptr,
 }
 
 Instruction *
-BuildUtil::mkVFETCH(Value *dst, DataType ty, DataFile file, int32_t offset,
-                    Value *attrRel, Value *primRel)
+BuildUtil::mkFetch(Value *dst, DataType ty, DataFile file, int32_t offset,
+                   Value *attrRel, Value *primRel)
 {
    Symbol *sym = mkSymbol(file, 0, ty, offset);
 
@@ -111,7 +111,7 @@ BuildUtil::mkVFETCH(Value *dst, DataType ty, DataFile file, int32_t offset,
    insn->setIndirect(0, 0, attrRel);
    insn->setIndirect(0, 1, primRel);
 
-   insert(insn);
+   // already inserted
    return insn;
 }
 
@@ -173,7 +173,7 @@ BuildUtil::mkCmp(operation op, CondCode cc, DataType ty, Value *dst,
 {
    CmpInstruction *insn = new CmpInstruction(func, op);
 
-   insn->setType(ty, ty);
+   insn->setType(dst->reg.file == FILE_PREDICATE ? TYPE_U8 : ty, ty);
    insn->setCondition(cc);
    insn->setDef(0, dst);
    insn->setSrc(0, src0);

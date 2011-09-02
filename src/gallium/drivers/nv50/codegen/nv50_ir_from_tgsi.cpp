@@ -2077,11 +2077,8 @@ Converter::run()
       mkOp1(OP_RCP, TYPE_F32, fragCoord[3], fragCoord[3]);
    }
 
-   unsigned int limit = 64;
    for (ip = 0; ip < code->scan.num_instructions; ++ip) {
       if (!handleInstruction(&code->insns[ip]))
-         return false;
-      if (--limit == 0)
          return false;
    }
    return true;
