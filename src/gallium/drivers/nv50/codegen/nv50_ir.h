@@ -671,7 +671,7 @@ public:
    unsigned terminator : 1; // end of basic block
    unsigned atomic     : 1;
    unsigned ftz        : 1; // flush denormal to zero
-   unsigned dnz        : 1; // denormals are zero
+   unsigned dnz        : 1; // denormals, NaN are zero
    unsigned ipa        : 4; // interpolation mode
    unsigned lanes      : 4;
    unsigned perPatch   : 1;

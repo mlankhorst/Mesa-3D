@@ -507,6 +507,11 @@ public:
    Source(struct nv50_ir_prog_info *);
    ~Source();
 
+   struct Subroutine
+   {
+      unsigned pc;
+   };
+
 public:
    bool scanSource();
    unsigned fileSize(unsigned file) const { return scan.file_max[file] + 1; }
@@ -519,6 +524,9 @@ public:
 
    uint8_t *resourceTargets; // TGSI_TEXTURE_*
    unsigned int resourceCount;
+
+   Subroutine *subroutines;
+   unsigned int subroutineCount;
 
 private:
    int inferSysValDirection(unsigned sn) const;
@@ -547,12 +555,15 @@ Source::~Source()
       FREE(info->immd.type);
 
    if (resourceTargets)
-      FREE(resourceTargets);
+      delete[] resourceTargets;
+   if (subroutines)
+      delete[] subroutines;
 }
 
 bool Source::scanSource()
 {
    unsigned insnCount = 0;
+   unsigned subrCount = 0;
    struct tgsi_parse_context parse;
 
    tgsi_scan_shader(tokens, &scan);
@@ -563,7 +574,10 @@ bool Source::scanSource()
       return false;
 
    resourceCount = scan.file_max[TGSI_FILE_RESOURCE] + 1;
-   resourceTargets = (uint8_t *)MALLOC(resourceCount);
+   resourceTargets = new uint8_t[resourceCount];
+
+   subroutineCount = scan.opcode_count[TGSI_OPCODE_BGNSUB] + 1;
+   subroutines = new Subroutine[subroutineCount];
 
    info->numInputs = scan.file_max[TGSI_FILE_INPUT] + 1;
    info->numOutputs = scan.file_max[TGSI_FILE_OUTPUT] + 1;
@@ -594,6 +608,9 @@ bool Source::scanSource()
       case TGSI_TOKEN_TYPE_INSTRUCTION:
          insns[insnCount++] = parse.FullToken.FullInstruction;
          scanInstruction(&parse.FullToken.FullInstruction);
+
+         if (insns[insnCount - 1].Instruction.Opcode == TGSI_OPCODE_BGNSUB)
+            subroutines[++subrCount].pc = insnCount - 1;
          break;
       case TGSI_TOKEN_TYPE_PROPERTY:
          scanProperty(&parse.FullToken.FullProperty);
@@ -1933,7 +1950,7 @@ Converter::handleInstruction(const struct tgsi_full_instruction *insn)
    case TGSI_OPCODE_CAL:
       // we don't have function declarations, so inline everything
       retIPs.push(ip);
-      ip = (ip + tgsi.getLabel()) - 1; // ip is incremented after return
+      ip = code->subroutines[tgsi.getLabel()].pc - 1; // +1 after return
       return true;
    case TGSI_OPCODE_RET:
    {
@@ -1949,7 +1966,7 @@ Converter::handleInstruction(const struct tgsi_full_instruction *insn)
          bb->cfg.attach(&leave->cfg, Graph::Edge::CROSS);
       }
       // everything inlined so RET serves only to wrap up the stack
-      if (entry->getEntry()->op == OP_PRERET)
+      if (entry->getEntry() && entry->getEntry()->op == OP_PRERET)
          mkFlow(OP_RET, NULL, CC_ALWAYS, NULL)->fixed = 1;
    }
       break;
