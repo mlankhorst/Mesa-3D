@@ -28,7 +28,7 @@ private:
    void emitPredicate(const Instruction *);
 
    void setAddress16(const ValueRef&);
-   void setImmediate(const Instruction *, const int s);
+   void setImmediate(const Instruction *, const int s); // needs op already set
    void setImmediateS8(const ValueRef&);
 
    void emitCondCode(CondCode cc, int pos);
@@ -232,8 +232,9 @@ CodeEmitterNVC0::setImmediate(const Instruction *i, const int s)
    } else
    if ((code[0] & 0xf) == 0x3 || (code[0] & 0xf) == 4) {
       // integer immediate
-      assert(!(u32 & 0xfff00000));
+      assert((u32 & 0xfff00000) == 0 || (u32 & 0xfff00000) == 0xfff00000);
       assert(!(code[1] & 0xc000));
+      u32 &= 0xfffff;
       code[0] |= (u32 & 0x3f) << 26;
       code[1] |= 0xc000 | (u32 >> 6);
    } else {
@@ -545,7 +546,7 @@ CodeEmitterNVC0::emitUADD(const Instruction *i)
 
       if (i->saturate)
          code[0] |= 1 << 5;
-      if (i->src[2].exists()) // add carry
+      if (i->flagsSrc >= 0) // add carry
          code[0] |= 1 << 6;
    } else {
       assert(!(addOp & 0x100));
@@ -695,14 +696,13 @@ CodeEmitterNVC0::emitMINMAX(const Instruction *i)
 
    op = (i->op == OP_MIN) ? 0x080e000000000000ULL : 0x081e000000000000ULL;
 
-   emitForm_A(i, op);
-
    if (i->ftz)
-      code[0] |= 1 << 5;
+      op |= 1 << 5;
    else
    if (!isFloatType(i->dType))
-      code[0] |= isSignedType(i->dType) ? 0x23 : 0x03;
+      op |= isSignedType(i->dType) ? 0x23 : 0x03;
 
+   emitForm_A(i, op);
    emitNegAbs12(i);
 }
 
@@ -814,26 +814,27 @@ CodeEmitterNVC0::emitCVT(Instruction *i)
 void
 CodeEmitterNVC0::emitSET(const CmpInstruction *i)
 {
-   uint32_t opc;
-
-   switch (i->op) {
-   case OP_SET_AND: opc = 0x10000000; break;
-   case OP_SET_OR:  opc = 0x10200000; break;
-   case OP_SET_XOR: opc = 0x10400000; break;
-   default:
-      opc = 0x100e0000;
-      break;
-   }
-   emitForm_A(i, static_cast<uint64_t>(opc) << 32);
+   uint32_t hi;
+   uint32_t lo = 0;
 
    if (i->sType == TYPE_F64)
-      code[0] |= 0x1;
+      lo = 0x1;
    else
    if (!isFloatType(i->sType))
-      code[0] |= 0x3;
+      lo = 0x3;
 
    if (isFloatType(i->dType) || isSignedIntType(i->sType))
-      code[0] |= 0x20;
+      lo |= 0x20;
+
+   switch (i->op) {
+   case OP_SET_AND: hi = 0x10000000; break;
+   case OP_SET_OR:  hi = 0x10200000; break;
+   case OP_SET_XOR: hi = 0x10400000; break;
+   default:
+      hi = 0x100e0000;
+      break;
+   }
+   emitForm_A(i, (static_cast<uint64_t>(hi) << 32) | lo);
 
    if (i->def[0].getFile() == FILE_PREDICATE) {
       if (i->sType == TYPE_F32)
@@ -859,22 +860,25 @@ CodeEmitterNVC0::emitSET(const CmpInstruction *i)
 void
 CodeEmitterNVC0::emitSLCT(const CmpInstruction *i)
 {
-   emitForm_A(i, HEX64(30000000, 00000000));
+   uint64_t op;
 
    switch (i->dType) {
    case TYPE_S32:
-      code[0] |= 0x23;
+      op = HEX64(30000000, 00000023);
       break;
    case TYPE_U32:
-      code[0] |= 0x03;
+      op = HEX64(30000000, 00000003);
       break;
    case TYPE_F32:
-      code[1] |= 0x08000000;
+      op = HEX64(38000000, 00000000);
       break;
    default:
       assert(!"invalid type for SLCT");
+      op = 0;
       break;
    }
+   emitForm_A(i, op);
+
    CondCode cc = i->setCond;
 
    if (i->src[2].mod.neg())
