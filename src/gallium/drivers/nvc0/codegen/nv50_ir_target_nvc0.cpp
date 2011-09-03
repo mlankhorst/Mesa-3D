@@ -429,7 +429,7 @@ TargetNVC0::insnCanLoad(const Instruction *i, int s,
                return false;
          }
       } else
-      if ((i->op == OP_MAD || i->op == OP_FMA) && (i->dType == TYPE_F32)) {
+      if (i->op == OP_MAD || i->op == OP_FMA) {
          // requires src == dst, cannot decide before RA
          // (except if we implement more constraints)
          if (ld->getSrc(0)->asImm()->reg.data.u32 & 0xfff)
