@@ -675,6 +675,25 @@ ConstantFolding::opnd(Instruction *i, ImmediateValue *src, int s)
    }
       break;
 
+   case OP_SHL:
+   {
+      if (s != 1 || i->src[0].mod != Modifier(0))
+         break;
+      // try to concatenate shifts
+      Instruction *si = i->getSrc(0)->getInsn();
+      if (!si ||
+          si->op != OP_SHL || si->src[1].mod != Modifier(0))
+         break;
+      ImmediateValue *siImm = si->src[1].getImmediate();
+      if (siImm) {
+         bld.setPosition(i, false);
+         i->setSrc(0, si->getSrc(0));
+         i->setSrc(1, bld.loadImm(NULL,
+                                  imm.reg.data.u32 + siImm->reg.data.u32));
+      }
+   }
+      break;
+
    case OP_ABS:
    case OP_NEG:
    case OP_LG2:
