@@ -38,7 +38,7 @@ NVC0LegalizeSSA::handleDIV(Instruction *i)
 
    bld.setPosition(i, false);
    def[0] = bld.mkMovToReg(0, i->getSrc(0))->getDef(0);
-   def[1] = bld.mkMovToReg(1, i->getSrc(1))->getDef(1);
+   def[1] = bld.mkMovToReg(1, i->getSrc(1))->getDef(0);
    switch (i->dType) {
    case TYPE_U32: builtin = NVC0_BUILTIN_DIV_U32; break;
    case TYPE_S32: builtin = NVC0_BUILTIN_DIV_S32; break;

@@ -323,6 +323,7 @@ nv50_ir::DataType Instruction::inferSrcType() const
    case TGSI_OPCODE_ISHR:
    case TGSI_OPCODE_ISLT:
    case TGSI_OPCODE_SAD: // not sure about SAD, but no one has a float version
+   case TGSI_OPCODE_MOD:
       return nv50_ir::TYPE_S32;
    default:
       return nv50_ir::TYPE_F32;
@@ -434,12 +435,14 @@ static nv50_ir::operation translateOpcode(uint opcode)
    NV50_IR_OPCODE_CASE(NOT, NOT);
    NV50_IR_OPCODE_CASE(TRUNC, TRUNC);
    NV50_IR_OPCODE_CASE(SHL, SHL);
+
    NV50_IR_OPCODE_CASE(AND, AND);
    NV50_IR_OPCODE_CASE(OR, OR);
-
+   NV50_IR_OPCODE_CASE(MOD, MOD);
    NV50_IR_OPCODE_CASE(XOR, XOR);
    NV50_IR_OPCODE_CASE(SAD, SAD);
    NV50_IR_OPCODE_CASE(TXF, TXF);
+   NV50_IR_OPCODE_CASE(TXQ, TXQ);
 
    NV50_IR_OPCODE_CASE(EMIT, EMIT);
    NV50_IR_OPCODE_CASE(ENDPRIM, RESTART);
@@ -461,7 +464,7 @@ static nv50_ir::operation translateOpcode(uint opcode)
    NV50_IR_OPCODE_CASE(UMAD, MAD);
    NV50_IR_OPCODE_CASE(UMAX, MAX);
    NV50_IR_OPCODE_CASE(UMIN, MIN);
-
+   NV50_IR_OPCODE_CASE(UMOD, MOD);
    NV50_IR_OPCODE_CASE(UMUL, MUL);
    NV50_IR_OPCODE_CASE(USEQ, SET);
    NV50_IR_OPCODE_CASE(USGE, SET);

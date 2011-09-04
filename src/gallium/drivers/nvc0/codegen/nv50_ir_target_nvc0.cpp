@@ -32,7 +32,7 @@ static const uint32_t nvc0_builtin_code[] =
 // INPUT:   $r0: dividend, $r1: divisor
 // OUTPUT:  $r0: result, $r1: modulus
 // CLOBBER: $r2 - $r3, $p0 - $p1
-// SIZE:    23 / 14 * 8 bytes
+// SIZE:    22 / 14 * 8 bytes
 //
 #if 1
    0x04009c03, 0x78000000,
@@ -159,9 +159,9 @@ static const uint32_t nvc0_builtin_code[] =
 static const uint16_t nvc0_builtin_offsets[NVC0_BUILTIN_COUNT] =
 {
    0,
-   8 * (23),
-   8 * (23 + 18),
-   8 * (23 + 18 + 9)
+   8 * (22),
+   8 * (22 + 18),
+   8 * (22 + 18 + 9)
 };
 
 void
@@ -455,6 +455,24 @@ TargetNVC0::isOpSupported(operation op, DataType ty) const
 bool
 TargetNVC0::isModSupported(const Instruction *insn, int s, Modifier mod) const
 {
+   if (!isFloatType(insn->dType)) {
+      switch (insn->op) {
+      case OP_ABS:
+      case OP_NEG:
+      case OP_CVT:
+      case OP_CEIL:
+      case OP_FLOOR:
+      case OP_TRUNC:
+      case OP_AND:
+      case OP_OR:
+      case OP_XOR:
+      case OP_ADD:
+      case OP_SUB:
+         break;
+      default:
+         return false;
+      }
+   }
    return (mod & Modifier(opInfo[insn->op].srcMods[s])) == mod;
 }
 
