@@ -827,8 +827,10 @@ bool Source::scanInstruction(const struct tgsi_full_instruction *inst)
             if (!(mask & (1 << c)))
                continue;
             int k = src.getSwizzle(c);
-            if (k <= TGSI_SWIZZLE_W)
-               info->in[src.getIndex(0)].mask |= 1 << k;
+            int i = src.getIndex(0);
+            if (info->in[i].sn != TGSI_SEMANTIC_FOG || k == TGSI_SWIZZLE_X)
+               if (k <= TGSI_SWIZZLE_W)
+                  info->in[i].mask |= 1 << k;
          }
       }
    }
@@ -1105,8 +1107,12 @@ Converter::fetchSrc(tgsi::Instruction::SrcRegister src, int c, Value *ptr)
       return mkLoad(TYPE_U32, srcToSym(src, c), ptr);
 
    case TGSI_FILE_INPUT:
-      if (prog->getType() == Program::TYPE_FRAGMENT)
+      if (prog->getType() == Program::TYPE_FRAGMENT) {
+         // don't load masked inputs, won't be assigned a slot
+         if (!ptr && !(info->in[idx].mask & (1 << swz)))
+            return loadImm(NULL, swz == TGSI_SWIZZLE_W ? 1.0f : 0.0f);
          return interpolate(src, c, ptr);
+      }
       return mkLoad(TYPE_U32, srcToSym(src, c), ptr);
 
    case TGSI_FILE_SYSTEM_VALUE:
