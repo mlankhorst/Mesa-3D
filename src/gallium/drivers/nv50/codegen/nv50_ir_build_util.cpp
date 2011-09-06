@@ -32,7 +32,7 @@ BuildUtil::addImmediate(ImmediateValue *imm)
 Instruction *
 BuildUtil::mkOp1(operation op, DataType ty, Value *dst, Value *src)
 {
-   Instruction *insn = New_Instruction(func, op, ty);
+   Instruction *insn = new_Instruction(func, op, ty);
 
    insn->setDef(0, dst);
    insn->setSrc(0, src);
@@ -45,7 +45,7 @@ Instruction *
 BuildUtil::mkOp2(operation op, DataType ty, Value *dst,
                  Value *src0, Value *src1)
 {
-   Instruction *insn = New_Instruction(func, op, ty);
+   Instruction *insn = new_Instruction(func, op, ty);
 
    insn->setDef(0, dst);
    insn->setSrc(0, src0);
@@ -59,7 +59,7 @@ Instruction *
 BuildUtil::mkOp3(operation op, DataType ty, Value *dst,
                  Value *src0, Value *src1, Value *src2)
 {
-   Instruction *insn = New_Instruction(func, op, ty);
+   Instruction *insn = new_Instruction(func, op, ty);
 
    insn->setDef(0, dst);
    insn->setSrc(0, src0);
@@ -73,7 +73,7 @@ BuildUtil::mkOp3(operation op, DataType ty, Value *dst,
 LValue *
 BuildUtil::mkLoad(DataType ty, Symbol *mem, Value *ptr)
 {
-   Instruction *insn = New_Instruction(func, OP_LOAD, ty);
+   Instruction *insn = new_Instruction(func, OP_LOAD, ty);
    LValue *def = getScratch();
 
    insn->setDef(0, def);
@@ -89,7 +89,7 @@ Instruction *
 BuildUtil::mkStore(operation op, DataType ty, Symbol *mem, Value *ptr,
                    Value *stVal)
 {
-   Instruction *insn = New_Instruction(func, op, ty);
+   Instruction *insn = new_Instruction(func, op, ty);
 
    insn->setSrc(0, mem);
    insn->setSrc(1, stVal);
@@ -118,7 +118,7 @@ BuildUtil::mkFetch(Value *dst, DataType ty, DataFile file, int32_t offset,
 Instruction *
 BuildUtil::mkMov(Value *dst, Value *src, DataType ty)
 {
-   Instruction *insn = New_Instruction(func, OP_MOV, ty);
+   Instruction *insn = new_Instruction(func, OP_MOV, ty);
 
    insn->setDef(0, dst);
    insn->setSrc(0, src);
@@ -130,9 +130,9 @@ BuildUtil::mkMov(Value *dst, Value *src, DataType ty)
 Instruction *
 BuildUtil::mkMovToReg(int id, Value *src)
 {
-   Instruction *insn = New_Instruction(func, OP_MOV, typeOfSize(src->reg.size));
+   Instruction *insn = new_Instruction(func, OP_MOV, typeOfSize(src->reg.size));
 
-   insn->setDef(0, New_LValue(func, FILE_GPR));
+   insn->setDef(0, new_LValue(func, FILE_GPR));
    insn->getDef(0)->reg.data.id = id;
    insn->setSrc(0, src);
 
@@ -143,10 +143,10 @@ BuildUtil::mkMovToReg(int id, Value *src)
 Instruction *
 BuildUtil::mkMovFromReg(Value *dst, int id)
 {
-   Instruction *insn = New_Instruction(func, OP_MOV, typeOfSize(dst->reg.size));
+   Instruction *insn = new_Instruction(func, OP_MOV, typeOfSize(dst->reg.size));
 
    insn->setDef(0, dst);
-   insn->setSrc(0, New_LValue(func, FILE_GPR));
+   insn->setSrc(0, new_LValue(func, FILE_GPR));
    insn->getSrc(0)->reg.data.id = id;
 
    insert(insn);
@@ -157,7 +157,7 @@ Instruction *
 BuildUtil::mkCvt(operation op,
                  DataType dstTy, Value *dst, DataType srcTy, Value *src)
 {
-   Instruction *insn = New_Instruction(func, op, dstTy);
+   Instruction *insn = new_Instruction(func, op, dstTy);
 
    insn->setType(dstTy, srcTy);
    insn->setDef(0, dst);
@@ -171,7 +171,7 @@ Instruction *
 BuildUtil::mkCmp(operation op, CondCode cc, DataType ty, Value *dst,
                  Value *src0, Value *src1, Value *src2)
 {
-   CmpInstruction *insn = new CmpInstruction(func, op);
+   CmpInstruction *insn = new_CmpInstruction(func, op);
 
    insn->setType(dst->reg.file == FILE_PREDICATE ? TYPE_U8 : ty, ty);
    insn->setCondition(cc);
@@ -189,7 +189,7 @@ Instruction *
 BuildUtil::mkTex(operation op, TexTarget targ, uint8_t tic, uint8_t tsc,
                  Value **def, Value **src)
 {
-   TexInstruction *tex = new TexInstruction(func, op);
+   TexInstruction *tex = new_TexInstruction(func, op);
 
    for (int d = 0; d < 4 && def[d]; ++d)
       tex->setDef(d, def[d]);
@@ -229,7 +229,7 @@ BuildUtil::mkSelect(Value *pred, Value *dst, Value *trSrc, Value *flSrc)
 FlowInstruction *
 BuildUtil::mkFlow(operation op, BasicBlock *targ, CondCode cc, Value *pred)
 {
-   FlowInstruction *insn = new FlowInstruction(func, op, targ);
+   FlowInstruction *insn = new_FlowInstruction(func, op, targ);
 
    if (pred)
       insn->setPredicate(cc, pred);
@@ -259,13 +259,13 @@ BuildUtil::mkClobber(DataFile f, uint32_t rMask, int unit)
       int size2 = (baseSize2[mask] >> 12) & 0xf;
       Instruction *insn = mkOp(OP_NOP, TYPE_NONE, NULL);
       if (1) { // size1 can't be 0
-         LValue *reg = New_LValue(func, f);
+         LValue *reg = new_LValue(func, f);
          reg->reg.size = size1 << unit;
          reg->reg.data.id = base + base1;
          insn->setDef(0, reg);
       }
       if (size2) {
-         LValue *reg = New_LValue(func, f);
+         LValue *reg = new_LValue(func, f);
          reg->reg.size = size2 << unit;
          reg->reg.data.id = base + base2;
          insn->setDef(1, reg);
@@ -283,7 +283,7 @@ BuildUtil::mkImm(uint32_t u)
 
    ImmediateValue *imm = imms[pos];
    if (!imm) {
-      imm = new ImmediateValue(prog, u);
+      imm = new_ImmediateValue(prog, u);
       addImmediate(imm);
    }
    return imm;
@@ -292,7 +292,7 @@ BuildUtil::mkImm(uint32_t u)
 ImmediateValue *
 BuildUtil::mkImm(uint64_t u)
 {
-   ImmediateValue *imm = new ImmediateValue(prog, (uint32_t)0);
+   ImmediateValue *imm = new_ImmediateValue(prog, (uint32_t)0);
 
    imm->reg.size = 8;
    imm->reg.type = TYPE_U64;
@@ -334,7 +334,7 @@ Symbol *
 BuildUtil::mkSymbol(DataFile file, int8_t fileIndex, DataType ty,
                     uint32_t baseAddr)
 {
-   Symbol *sym = New_Symbol(prog, file, fileIndex);
+   Symbol *sym = new_Symbol(prog, file, fileIndex);
 
    sym->setOffset(baseAddr);
    sym->reg.type = ty;
@@ -346,7 +346,7 @@ BuildUtil::mkSymbol(DataFile file, int8_t fileIndex, DataType ty,
 Symbol *
 BuildUtil::mkSysVal(SVSemantic svName, uint32_t svIndex)
 {
-   Symbol *sym = New_Symbol(prog, FILE_SYSTEM_VALUE, 0);
+   Symbol *sym = new_Symbol(prog, FILE_SYSTEM_VALUE, 0);
 
    assert(svIndex < 4 ||
           (svName == SV_CLIP_DISTANCE || svName == SV_TESS_FACTOR));
@@ -420,7 +420,7 @@ BuildUtil::DataArray::setup(uint32_t base, int len, int v, int size, DataFile f)
       memset(values, 0, arrayLen * vecDim * sizeof(Value *));
 
    if (!regOnly) {
-      baseSym = New_Symbol(up->getProgram(), file, 0);
+      baseSym = new_Symbol(up->getProgram(), file, 0);
       baseSym->setOffset(baseAddr);
       baseSym->reg.size = size;
    }
@@ -436,7 +436,7 @@ BuildUtil::DataArray::acquire(int i, int c)
    if (regOnly) {
       const unsigned int idx = i * 4 + c; // vecDim always 4 if regOnly
       if (!values[idx])
-         values[idx] = New_LValue(up->getFunction(), file);
+         values[idx] = new_LValue(up->getFunction(), file);
       return values[idx];
    } else {
       return up->getScratch();
@@ -452,7 +452,7 @@ BuildUtil::DataArray::load(int i, int c, Value *ptr)
 
    if (regOnly) {
       if (!values[idx])
-         values[idx] = New_LValue(up->getFunction(), file);
+         values[idx] = new_LValue(up->getFunction(), file);
       return values[idx];
    } else {
       Symbol *sym = reinterpret_cast<Symbol *>(values[idx]);
@@ -486,7 +486,7 @@ BuildUtil::DataArray::mkSymbol(int i, int c, Symbol *base)
 {
    const unsigned int idx = i * vecDim + c;
 
-   Symbol *sym = New_Symbol(up->getProgram(), file, 0);
+   Symbol *sym = new_Symbol(up->getProgram(), file, 0);
 
    assert(base || (idx < arrayLen && c < vecDim));
 

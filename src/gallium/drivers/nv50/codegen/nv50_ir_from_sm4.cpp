@@ -1102,7 +1102,7 @@ Converter::interpolate(const sm4_op& op, int c, int i)
 
    Value *ptr = getSrcPtr(i, 0, 4);
 
-   Instruction *insn = New_Instruction(func, opr, TYPE_F32);
+   Instruction *insn = new_Instruction(func, opr, TYPE_F32);
 
    insn->setDef(0, getScratch());
    insn->setSrc(0, iSym(idx, c));
@@ -1320,7 +1320,7 @@ void
 Converter::handleSAMPLE(operation opr, Value *dst0[4])
 {
 #if 0
-   TexInstruction *texi = new TexInstruction(prog, opr);
+   TexInstruction *texi = new_TexInstruction(prog, opr);
    int c, d, s;
    Value *arg[4], *src0[4];
    Value *val;
@@ -1579,7 +1579,7 @@ Converter::handleInstruction(unsigned int pos)
       mkFlow(OP_BRA, NULL, CC_NOT_P, src(0, 0));
 
       // TODO: detect good join points
-      bb->joinAt = new FlowInstruction(func, OP_JOINAT, NULL);
+      bb->joinAt = new_FlowInstruction(func, OP_JOINAT, NULL);
       bb->insertBefore(bb->getExit(), bb->joinAt);
       joins.push(bb->joinAt);
 
@@ -1619,7 +1619,7 @@ Converter::handleInstruction(unsigned int pos)
 
       if (joinAt) {
          joinAt->asFlow()->target.bb = convBB;
-         convBB->insertHead(new FlowInstruction(func, OP_JOIN, NULL));
+         convBB->insertHead(new_FlowInstruction(func, OP_JOIN, NULL));
          convBB->getEntry()->fixed = 1;
       }
    }
@@ -1706,7 +1706,7 @@ Converter::handleInstruction(unsigned int pos)
       break;
 
    case SM4_OPCODE_NOP:
-      insert(New_Instruction(func, OP_NOP, TYPE_NONE));
+      insert(new_Instruction(func, OP_NOP, TYPE_NONE));
       break;
 
    case SM4_OPCODE_HS_DECLS:

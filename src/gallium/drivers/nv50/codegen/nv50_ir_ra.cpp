@@ -308,13 +308,13 @@ RegAlloc::PhiMovesPass::visit(BasicBlock *bb)
    for (Graph::EdgeIterator ei = bb->cfg.incident(); !ei.end(); ei.next()) {
       pb = BasicBlock::get(ei.getNode());
       if (!pb->isTerminated())
-         pb->insertTail(new FlowInstruction(func, OP_BRA, bb));
+         pb->insertTail(new_FlowInstruction(func, OP_BRA, bb));
 
       for (phi = bb->getPhi(); phi && phi->op == OP_PHI; phi = phi->next) {
-         mov = New_Instruction(func, OP_MOV, TYPE_U32);
+         mov = new_Instruction(func, OP_MOV, TYPE_U32);
 
          mov->setSrc(0, phi->getSrc(j));
-         mov->setDef(0, New_LValue(func, phi->getDef(0)->asLValue()));
+         mov->setDef(0, new_LValue(func, phi->getDef(0)->asLValue()));
          phi->setSrc(j, mov->getDef(0));
 
          pb->insertBefore(pb->getExit(), mov);
@@ -333,8 +333,6 @@ RegAlloc::buildLiveSets(BasicBlock *bb)
    unsigned int s, d;
 
    NV50_DBGMSG(PROG_RA, "buildLiveSets: BB:%i\n", bb->getId());
-
-   // XXX: if (!bb->phi) bb->phi = bb->entry
 
    bb->liveSet.allocate(func->allLValues.getSize(), false);
 
@@ -776,6 +774,11 @@ RegAlloc::execFunc()
       goto out;
 
 out:
+   // TODO: should probably call destructor on LValues later instead
+   for (ArrayList::Iterator it = func->allLValues.iterator();
+        !it.end(); it.next())
+      reinterpret_cast<LValue *>(it.get())->livei.clear();
+
    return ret;
 }
 
@@ -852,11 +855,11 @@ RegAlloc::InsertConstraintsPass::detectConflict(Instruction *cst, int s)
 void
 RegAlloc::InsertConstraintsPass::addConstraint(Instruction *i, int s, int n)
 {
-   Instruction *cst = New_Instruction(func, OP_CONSTRAINT, i->dType);
+   Instruction *cst = new_Instruction(func, OP_CONSTRAINT, i->dType);
    int d;
 
    for (d = 0; d < n; ++s, ++d) {
-      cst->setDef(d, New_LValue(func, FILE_GPR));
+      cst->setDef(d, new_LValue(func, FILE_GPR));
       cst->setSrc(d, i->getSrc(s));
       i->setSrc(s, cst->getDef(d));
    }
@@ -871,7 +874,7 @@ RegAlloc::InsertConstraintsPass::addConstraint(Instruction *i, int s, int n)
 void
 RegAlloc::InsertConstraintsPass::addHazard(Instruction *i, const ValueRef *src)
 {
-   Instruction *hzd = New_Instruction(func, OP_NOP, TYPE_NONE);
+   Instruction *hzd = new_Instruction(func, OP_NOP, TYPE_NONE);
    hzd->setSrc(0, src->get());
    i->bb->insertAfter(i, hzd);
 
@@ -937,10 +940,10 @@ RegAlloc::InsertConstraintsPass::insertConstraintMoves()
       for (int s = 0; cst->srcExists(s); ++s) {
          if (!detectConflict(cst, s))
              continue;
-         Instruction *mov = New_Instruction(func, OP_MOV,
+         Instruction *mov = new_Instruction(func, OP_MOV,
                                             typeOfSize(cst->src[s].getSize()));
          mov->setSrc(0, cst->getSrc(s));
-         mov->setDef(0, New_LValue(func, FILE_GPR));
+         mov->setDef(0, new_LValue(func, FILE_GPR));
          cst->setSrc(s, mov->getDef(0));
 
          cst->bb->insertBefore(cst, mov);

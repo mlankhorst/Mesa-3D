@@ -80,7 +80,7 @@ CopyPropagation::visit(BasicBlock *bb)
       if (mov->getDef(0)->reg.data.id < 0 && si && si->op != OP_PHI) {
          // propagate
          mov->def[0].replace(mov->getSrc(0), false);
-         Del_Instruction(prog, mov);
+         delete_Instruction(prog, mov);
       }
    }
    return true;
@@ -173,7 +173,7 @@ LoadPropagation::visit(BasicBlock *bb)
             i->setIndirect(s, 0, ld->getIndirect(0, 0));
 
          if (ld->getDef(0)->refCount() == 0)
-            Del_Instruction(prog, ld);
+            delete_Instruction(prog, ld);
       }
    }
    return true;
@@ -423,7 +423,7 @@ ConstantFolding::expr(Instruction *i,
    i->src[0].mod = Modifier(0);
    i->src[1].mod = Modifier(0);
 
-   i->setSrc(0, New_ImmediateValue(i->bb->getProgram(), res.data.u32));
+   i->setSrc(0, new_ImmediateValue(i->bb->getProgram(), res.data.u32));
    i->setSrc(1, NULL);
 
    i->getSrc(0)->reg.data = res.data;
@@ -471,7 +471,7 @@ ConstantFolding::unary(Instruction *i, const ImmediateValue &imm)
       return;
    }
    i->op = OP_MOV;
-   i->setSrc(0, New_ImmediateValue(i->bb->getProgram(), res.data.f32));
+   i->setSrc(0, new_ImmediateValue(i->bb->getProgram(), res.data.f32));
    i->src[0].mod = Modifier(0);
 }
 
@@ -495,7 +495,7 @@ ConstantFolding::opnd(Instruction *i, ImmediateValue *src, int s)
 
             if (si->src[1].getImmediate()) {
                f *= si->src[1].getImmediate()->reg.data.f32;
-               si->setSrc(1, New_ImmediateValue(prog, f));
+               si->setSrc(1, new_ImmediateValue(prog, f));
                i->def[0].replace(i->getSrc(t), false);
                break;
             } else {
@@ -550,7 +550,7 @@ ConstantFolding::opnd(Instruction *i, ImmediateValue *src, int s)
       if (!isFloatType(i->sType) && !imm.isNegative() && imm.isPow2()) {
          i->op = OP_SHL;
          imm.applyLog2();
-         i->setSrc(1, New_ImmediateValue(prog, imm.reg.data.u32));
+         i->setSrc(1, new_ImmediateValue(prog, imm.reg.data.u32));
       }
       break;
    case OP_ADD:
@@ -610,7 +610,7 @@ ConstantFolding::opnd(Instruction *i, ImmediateValue *src, int s)
          if (s)
             bld.mkOp2(OP_SHR, TYPE_U32, i->getDef(0), tB, bld.mkImm(s));
 
-         Del_Instruction(prog, i);
+         delete_Instruction(prog, i);
       } else
       if (imm.reg.data.s32 == -1) {
          i->op = OP_NEG;
@@ -642,7 +642,7 @@ ConstantFolding::opnd(Instruction *i, ImmediateValue *src, int s)
          if (d < 0)
             bld.mkOp1(OP_NEG, TYPE_S32, i->getDef(0), tB);
 
-         Del_Instruction(prog, i);
+         delete_Instruction(prog, i);
       }
       break;
 
@@ -776,7 +776,7 @@ ModifierFolding::visit(BasicBlock *bb)
              mi->getDef(0)->refCount() <= 1 && target->isSatSupported(mi)) {
             mi->saturate = 1;
             mi->setDef(0, i->getDef(0));
-            Del_Instruction(prog, i);
+            delete_Instruction(prog, i);
          }
       }
    }
@@ -1075,8 +1075,7 @@ MemoryOpt::combineLd(Record *rec, Instruction *ld)
    rec->size = size;
    rec->insn->setType(typeOfSize(size));
 
-   ld->bb->remove(ld);
-   Del_Instruction(prog, ld);
+   delete_Instruction(prog, ld);
 
    return true;
 }
@@ -1128,8 +1127,7 @@ MemoryOpt::combineSt(Record *rec, Instruction *st)
    }
    st->putExtraSources(0, extra); // restore pointer and predicate
 
-   rec->insn->bb->remove(rec->insn);
-   Del_Instruction(prog, rec->insn);
+   delete_Instruction(prog, rec->insn);
    rec->insn = st;
    rec->size = size;
    rec->insn->setType(typeOfSize(size));
@@ -1270,8 +1268,7 @@ MemoryOpt::replaceLdFromLd(Instruction *ldE, Record *rec)
       ldE->def[dE].replace(ldR->getDef(dR), false);
    }
 
-   ldE->bb->remove(ldE);
-   Del_Instruction(prog, ldE);
+   delete_Instruction(prog, ldE);
    return true;
 }
 
@@ -1310,7 +1307,7 @@ MemoryOpt::replaceStFromSt(Instruction *restrict st, Record *rec)
    }
    st->putExtraSources(0, extra);
 
-   Del_Instruction(prog, rec->insn);
+   delete_Instruction(prog, rec->insn);
 
    rec->insn = st;
    rec->offset = st->getSrc(0)->reg.data.offset;
@@ -1512,7 +1509,7 @@ FlatteningPass::removeFlow(Instruction *insn)
    if (term->op != OP_JOIN)
       return;
 
-   Del_Instruction(prog, term);
+   delete_Instruction(prog, term);
 
    Value *pred = term->getPredicate();
 
@@ -1520,7 +1517,7 @@ FlatteningPass::removeFlow(Instruction *insn)
       Instruction *pSet = pred->getUniqueInsn();
       pred->join->reg.data.id = -1; // deallocate
       if (pSet->isDead())
-         Del_Instruction(prog, pSet);
+         delete_Instruction(prog, pSet);
    }
 }
 
@@ -1805,8 +1802,7 @@ GlobalCSE::visit(BasicBlock *bb)
          else
             bb->insertAfter(entry, ik);
          ik->setDef(0, phi->getDef(0));
-         bb->remove(phi);
-         Del_Instruction(prog, phi);
+         delete_Instruction(prog, phi);
       }
    }
 
@@ -1838,7 +1834,7 @@ LocalCSE::visit(BasicBlock *bb)
             if (ir->isResultEqual(ik)) {
                for (d = 0; ir->defExists(d); ++d)
                   ir->def[d].replace(ik->getDef(d), false);
-               Del_Instruction(prog, ir);
+               delete_Instruction(prog, ir);
                ir = NULL;
                ++replaced;
                break;
@@ -1892,7 +1888,7 @@ DeadCodeElim::visit(BasicBlock *bb)
       next = i->next;
       if (i->isDead()) {
          ++deadCount;
-         Del_Instruction(prog, i);
+         delete_Instruction(prog, i);
       } else
       if (i->defExists(1) && (i->op == OP_VFETCH || i->op == OP_LOAD)) {
          checkSplitLoad(i);

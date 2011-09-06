@@ -15,7 +15,7 @@ Graph::~Graph()
    Iterator *iter = this->safeIteratorDFS();
 
    for (; !iter->end(); iter->next())
-      reinterpret_cast<Node *>(iter->get())->cut(false);
+      reinterpret_cast<Node *>(iter->get())->cut();
 
    putIterator(iter);
 }
@@ -121,35 +121,19 @@ bool Graph::Node::detach(Graph::Node *node)
    return true;
 }
 
-// Cut a node from the graph, deleting all attached edges and subsequently
-// all nodes that become unreachable.
-void Graph::Node::cut(const bool subtree)
+// Cut a node from the graph, deleting all attached edges.
+void Graph::Node::cut()
 {
-   Iterator *itB = NULL, *itA = NULL;
-
    if (!graph || (!in && !out))
       return;
-
-   if (subtree)
-      itB = graph->safeIteratorDFS(); // unaffected by graph modification
 
    while (out)
       delete out;
    while (in)
       delete in;
 
-   if (!subtree)
-      return;
-   itA = graph->iteratorDFS(); // all reachable nodes after cutting
-
-   for (; !itB->end(); itB->next()) {
-      Node *node = reinterpret_cast<Node *>(itB->get());
-      if (node->visited != graph->sequence && node != this)
-         delete node;
-   }
-
-   graph->putIterator(itA);
-   graph->putIterator(itB);
+   if (graph->root == this)
+      graph->root = NULL;
 }
 
 Graph::Edge::Edge(Node *org, Node *tgt, Type kind)
@@ -189,7 +173,7 @@ Graph::Node::reachableBy(Node *node, Node *term)
    return pos == this;
 }
 
-class DFSIterator : public Iterator
+class DFSIterator : public Graph::GraphIterator
 {
 public:
    DFSIterator(Graph *graph, const bool preorder)
@@ -238,17 +222,17 @@ protected:
    int pos;
 };
 
-Iterator *Graph::iteratorDFS(bool preorder)
+Graph::GraphIterator *Graph::iteratorDFS(bool preorder)
 {
    return new DFSIterator(this, preorder);
 }
 
-Iterator *Graph::safeIteratorDFS(bool preorder)
+Graph::GraphIterator *Graph::safeIteratorDFS(bool preorder)
 {
    return this->iteratorDFS(preorder);
 }
 
-class CFGIterator : public Iterator
+class CFGIterator : public Graph::GraphIterator
 {
 public:
    CFGIterator(Graph *graph)
@@ -266,6 +250,12 @@ public:
 
       if (graph->getRoot())
          search(graph->getRoot(), graph->nextSequence());
+   }
+
+   ~CFGIterator()
+   {
+      if (nodes)
+         delete[] nodes;
    }
 
    virtual void *get() const { return nodes[pos]; }
@@ -318,12 +308,12 @@ private:
    int pos;
 };
 
-Iterator *Graph::iteratorCFG()
+Graph::GraphIterator *Graph::iteratorCFG()
 {
    return new CFGIterator(this);
 }
 
-Iterator *Graph::safeIteratorCFG()
+Graph::GraphIterator *Graph::safeIteratorCFG()
 {
    return this->iteratorCFG();
 }

@@ -8,7 +8,7 @@ Function::Function(Program *p, const char *fnName)
      name(fnName),
      prog(p)
 {
-   cfgExit = NULL;
+   // cfgExit = NULL;
    domTree = NULL;
 
    bbArray = NULL;
@@ -26,6 +26,11 @@ Function::~Function()
 {
    if (domTree)
       delete domTree;
+   if (bbArray)
+      delete[] bbArray;
+
+   for (ArrayList::Iterator BBs = allBBlocks.iterator(); !BBs.end(); BBs.next())
+      delete reinterpret_cast<BasicBlock *>(BBs.get());
 }
 
 BasicBlock::BasicBlock(Function *fn) : cfg(this), dom(this), func(fn)
@@ -41,6 +46,11 @@ BasicBlock::BasicBlock(Function *fn) : cfg(this), dom(this), func(fn)
    explicitCont = false;
 
    func->add(this, this->id);
+}
+
+BasicBlock::~BasicBlock()
+{
+   // nothing yet
 }
 
 BasicBlock *
@@ -277,10 +287,12 @@ Function::setEntry(BasicBlock *bb)
 unsigned int
 Function::orderInstructions(ArrayList &result)
 {
-   for (Iterator *iter = cfg.iteratorCFG(); !iter->end(); iter->next())
+   Iterator *iter;
+   for (iter = cfg.iteratorCFG(); !iter->end(); iter->next())
       for (Instruction *insn = BasicBlock::get(*iter)->getFirst();
            insn; insn = insn->next)
          result.insert(insn, insn->serial);
+   cfg.putIterator(iter);
    return result.getSize();
 }
 

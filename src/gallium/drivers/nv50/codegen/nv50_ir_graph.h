@@ -15,6 +15,12 @@ class Graph
 public:
    class Node;
 
+   class GraphIterator : public Iterator
+   {
+   public:
+      virtual ~GraphIterator() { };
+   };
+
    class Edge
    {
    public:
@@ -75,11 +81,11 @@ public:
    {
    public:
       Node(void *);
-      ~Node() { cut(false); }
+      ~Node() { cut(); }
 
       void attach(Node *, Edge::Type);
       bool detach(Node *);
-      void cut(const bool subtree);
+      void cut();
 
       inline EdgeIterator outgoing() const;
       inline EdgeIterator incident() const;
@@ -126,14 +132,14 @@ public:
 
    void insert(Node *node); // attach to or set as root
 
-   Iterator *iteratorDFS(bool preorder = true);
-   Iterator *iteratorCFG();
+   GraphIterator *iteratorDFS(bool preorder = true);
+   GraphIterator *iteratorCFG();
 
    // safe iterators are unaffected by changes to the *edges* of the graph
-   Iterator *safeIteratorDFS(bool preorder = true);
-   Iterator *safeIteratorCFG();
+   GraphIterator *safeIteratorDFS(bool preorder = true);
+   GraphIterator *safeIteratorCFG();
 
-   inline void putIterator(Iterator *);
+   inline void putIterator(Iterator *); // should be GraphIterator *
 
    void classifyEdges();
 
@@ -174,7 +180,7 @@ int Graph::Node::getSequence() const
 
 void Graph::putIterator(Iterator *iter)
 {
-   delete iter;
+   delete reinterpret_cast<GraphIterator *>(iter);
 }
 
 Graph::EdgeIterator Graph::Node::outgoing() const

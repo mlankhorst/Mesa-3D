@@ -989,7 +989,7 @@ Converter::dstToSym(tgsi::Instruction::DstRegister dst, int c)
 Symbol *
 Converter::makeSym(uint tgsiFile, int fileIdx, int idx, int c, uint32_t address)
 {
-   Symbol *sym = New_Symbol(prog, tgsi::translateFile(tgsiFile));
+   Symbol *sym = new_Symbol(prog, tgsi::translateFile(tgsiFile));
 
    sym->reg.fileIndex = fileIdx;
 
@@ -1031,7 +1031,7 @@ Converter::interpolate(tgsi::Instruction::SrcRegister src, int c, Value *ptr)
 
    const uint8_t mode = cvtInterpMode(&info->in[ptr ? 0 : src.getIndex(0)], op);
 
-   Instruction *insn = New_Instruction(func, op, TYPE_F32);
+   Instruction *insn = new_Instruction(func, op, TYPE_F32);
 
    insn->setDef(0, getScratch());
    insn->setSrc(0, srcToSym(src, c));
@@ -1284,11 +1284,11 @@ Converter::buildDot(int dim)
 void
 Converter::insertConvergenceOps(BasicBlock *conv, BasicBlock *fork)
 {
-   FlowInstruction *join = new FlowInstruction(func, OP_JOIN, NULL);
+   FlowInstruction *join = new_FlowInstruction(func, OP_JOIN, NULL);
    join->fixed = 1;
    conv->insertHead(join);
 
-   fork->joinAt = new FlowInstruction(func, OP_JOINAT, conv);
+   fork->joinAt = new_FlowInstruction(func, OP_JOINAT, conv);
    fork->insertBefore(fork->getExit(), fork->joinAt);
 }
 
@@ -1317,7 +1317,7 @@ Converter::setTexRS(TexInstruction *tex, unsigned int& s, int R, int S)
 void
 Converter::handleTXQ(Value *dst0[4], enum TexQuery query)
 {
-   TexInstruction *tex = new TexInstruction(func, OP_TXQ);
+   TexInstruction *tex = new_TexInstruction(func, OP_TXQ);
    tex->tex.query = query;
    unsigned int c, d;
 
@@ -1382,7 +1382,7 @@ Converter::handleTEX(Value *dst[4], int R, int S, int L, int C, int Dx, int Dy)
    Value *arg[4], *src[8];
    Value *lod = NULL, *shd = NULL;
    unsigned int s, c, d;
-   TexInstruction *texi = new TexInstruction(func, tgsi.getOP());
+   TexInstruction *texi = new_TexInstruction(func, tgsi.getOP());
 
    TexInstruction::Target tgt = tgsi.getTexture(code, R);
 
@@ -1457,7 +1457,7 @@ Converter::handleTEX(Value *dst[4], int R, int S, int L, int C, int Dx, int Dy)
 void
 Converter::handleTXF(Value *dst[4], int R)
 {
-   TexInstruction *texi = new TexInstruction(func, tgsi.getOP());
+   TexInstruction *texi = new_TexInstruction(func, tgsi.getOP());
    unsigned int c, d, s;
 
    texi->tex.target = tgsi.getTexture(code, R);
@@ -1812,7 +1812,7 @@ Converter::handleInstruction(const struct tgsi_full_instruction *insn)
       }
       break;
    case TGSI_OPCODE_KIL:
-      val0 = New_LValue(func, FILE_PREDICATE);
+      val0 = new_LValue(func, FILE_PREDICATE);
       for (c = 0; c < 4; ++c) {
          mkCmp(OP_SET, CC_LT, TYPE_F32, val0, fetchSrc(0, c), zero);
          mkOp(OP_DISCARD, TYPE_NONE, NULL)->setPredicate(CC_P, val0);
@@ -1997,7 +1997,7 @@ Converter::handleInstruction(const struct tgsi_full_instruction *insn)
       BasicBlock *leave = reinterpret_cast<BasicBlock *>(leaveBBs.peek().u.p);
       if (!isEndOfSubroutine(ip + 1)) {
          // insert a PRERET at the entry if this is an early return
-         FlowInstruction *preRet = new FlowInstruction(func, OP_PRERET, leave);
+         FlowInstruction *preRet = new_FlowInstruction(func, OP_PRERET, leave);
          preRet->fixed = 1;
          entry->insertHead(preRet);
          bb->cfg.attach(&leave->cfg, Graph::Edge::CROSS);

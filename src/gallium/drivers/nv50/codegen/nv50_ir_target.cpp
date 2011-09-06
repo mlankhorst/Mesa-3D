@@ -49,6 +49,11 @@ Target *Target::create(unsigned int chipset)
    }
 }
 
+void Target::destroy(Target *targ)
+{
+   delete targ;
+}
+
 void
 CodeEmitter::setCodeLocation(void *ptr, uint32_t size)
 {
@@ -90,8 +95,10 @@ CodeEmitter::prepareEmission(Function *func)
 
    BasicBlock::get(func->cfg.getRoot())->binPos = func->binPos;
 
-   for (Iterator *iter = func->cfg.iteratorCFG(); !iter->end(); iter->next())
+   Graph::GraphIterator *iter;
+   for (iter = func->cfg.iteratorCFG(); !iter->end(); iter->next())
       prepareEmission(BasicBlock::get(*iter));
+   func->cfg.putIterator(iter);
 }
 
 void
@@ -288,7 +295,9 @@ void
 nv50_ir_get_target_library(uint32_t chipset,
                            const uint32_t **code, uint32_t *size)
 {
-   nv50_ir::Target::create(chipset)->getBuiltinCode(code, size);
+   nv50_ir::Target *targ = nv50_ir::Target::create(chipset);
+   targ->getBuiltinCode(code, size);
+   nv50_ir::Target::destroy(targ);
 }
 
 }

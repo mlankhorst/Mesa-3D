@@ -594,8 +594,8 @@ class Instruction
 {
 public:
    Instruction();
-   Instruction(Function *, operation, DataType, int isExtended = 0);
-   ~Instruction();
+   Instruction(Function *, operation, DataType);
+   virtual ~Instruction();
 
    virtual Instruction *clone(bool deep) const;
 
@@ -677,8 +677,6 @@ public:
    unsigned perPatch   : 1;
    unsigned exit       : 1; // terminate program after insn
 
-   const unsigned extended : 1; // true for sub-classes of Instruction
-
    int8_t postFactor; // MUL/DIV(if < 0) by 1 << postFactor
 
    int8_t predSrc;
@@ -758,6 +756,7 @@ public:
 
 public:
    TexInstruction(Function *, operation);
+   virtual ~TexInstruction();
 
    virtual Instruction *clone(bool deep) const;
 
@@ -830,6 +829,7 @@ class BasicBlock
 {
 public:
    BasicBlock(Function *);
+   ~BasicBlock();
 
    void print();
 
@@ -923,7 +923,7 @@ public:
 
 public:
    Graph cfg;
-   Graph::Node *cfgExit;
+   // Graph::Node *cfgExit;
    Graph *domTree;
    Graph::Node call; // node in the call graph
 
@@ -1005,8 +1005,13 @@ public:
 
    int maxGPR;
 
-   MemoryPool InstructionPool;
-   MemoryPool LValuePool;
+   MemoryPool mem_Instruction;
+   MemoryPool mem_CmpInstruction;
+   MemoryPool mem_TexInstruction;
+   MemoryPool mem_FlowInstruction;
+   MemoryPool mem_LValue;
+   MemoryPool mem_Symbol;
+   MemoryPool mem_ImmediateValue;
 
    void releaseInstruction(Instruction *);
    void releaseValue(Value *);

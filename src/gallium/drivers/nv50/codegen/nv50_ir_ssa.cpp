@@ -341,7 +341,7 @@ Function::convertToSSA()
             // TODO: use dedicated PhiInstruction to lift this limit
             assert(dfBB->cfg.incidentCount() <= NV50_IR_MAX_SRCS);
 
-            phi = New_Instruction(this, OP_PHI, typeOfSize(lval->reg.size));
+            phi = new_Instruction(this, OP_PHI, typeOfSize(lval->reg.size));
             dfBB->insertTail(phi);
 
             phi->setDef(0, lval);
@@ -365,8 +365,8 @@ RenamePass::RenamePass(Function *fn) : func(fn), prog(fn->getProgram())
 {
    BasicBlock *root = BasicBlock::get(func->cfg.getRoot());
 
-   undef = New_Instruction(func, OP_NOP, TYPE_U32);
-   undef->setDef(0, New_LValue(func, FILE_GPR));
+   undef = new_Instruction(func, OP_NOP, TYPE_U32);
+   undef->setDef(0, new_LValue(func, FILE_GPR));
    root->insertHead(undef);
 
    stack = new Stack[func->allLValues.getSize()];
@@ -424,7 +424,7 @@ void RenamePass::search(BasicBlock *bb)
          lval = stmt->def[d].get()->asLValue();
          assert(lval);
          stmt->def[d].setSSA(
-            New_LValue(func, targ->nativeFile(lval->reg.file)));
+            new_LValue(func, targ->nativeFile(lval->reg.file)));
          stmt->def[d].get()->reg.data.id = lval->reg.data.id;
          stack[lval->id].push(stmt->def[d].get());
       }

@@ -2,7 +2,6 @@
 #ifndef __NV50_IR_UTIL_H__
 #define __NV50_IR_UTIL_H__
 
-#undef NDEBUG // XXX: argh, build system
 #include <new>
 #include <assert.h>
 #include <stdio.h>
@@ -20,32 +19,35 @@
       abort();                                                    \
    } while(0)
 
-#if 0
 
-# define New_Instruction(fn, args...) \
-   new ((fn)->getProgram()->InstructionPool.allocate()) Instruction(func, args)
+#define NV50_IR_FUNC_ALLOC_OBJ_DEF(obj, f, args...)               \
+   new ((f)->getProgram()->mem_##obj.allocate()) obj(f, args)
 
-# define Del_Instruction(prog, insn) (prog)->releaseInstruction(insn)
+#define new_Instruction(f, args...)                      \
+   NV50_IR_FUNC_ALLOC_OBJ_DEF(Instruction, f, args)
+#define new_CmpInstruction(f, args...)                   \
+   NV50_IR_FUNC_ALLOC_OBJ_DEF(CmpInstruction, f, args)
+#define new_TexInstruction(f, args...)                   \
+   NV50_IR_FUNC_ALLOC_OBJ_DEF(TexInstruction, f, args)
+#define new_FlowInstruction(f, args...)                  \
+   NV50_IR_FUNC_ALLOC_OBJ_DEF(FlowInstruction, f, args)
 
-# define New_LValue(fn, args...) \
-   new ((fn)->getProgram()->LValuePool.allocate()) LValue(fn, args)
+#define new_LValue(f, args...)                  \
+   NV50_IR_FUNC_ALLOC_OBJ_DEF(LValue, f, args)
 
-# define Del_Value(prog, value) (prog)->releaseValue(value)
 
-# define New_Symbol(prog, args...) new Symbol(prog, args)
-# define New_ImmediateValue(prog, args...) new ImmediateValue(prog, args)
+#define NV50_IR_PROG_ALLOC_OBJ_DEF(obj, p, args...)   \
+   new ((p)->mem_##obj.allocate()) obj(p, args)
 
-#else
+#define new_Symbol(p, args...)                           \
+   NV50_IR_PROG_ALLOC_OBJ_DEF(Symbol, p, args)
+#define new_ImmediateValue(p, args...)                   \
+   NV50_IR_PROG_ALLOC_OBJ_DEF(ImmediateValue, p, args)
 
-# define New_Instruction(args...) new Instruction(args)
-# define New_LValue(args...) new LValue(args)
-# define New_Symbol(args...) new Symbol(args)
-# define New_ImmediateValue(args...) new ImmediateValue(args)
 
-# define Del_Instruction(prog, insn) delete insn
-# define Del_Value(prog, value) delete value
+#define delete_Instruction(p, insn) (p)->releaseInstruction(insn)
+#define delete_Value(p, val) (p)->releaseValue(val)
 
-#endif
 
 namespace nv50_ir {
 
@@ -341,6 +343,7 @@ public:
 
    bool extend(int, int);
    void unify(Interval&); // clears source interval
+   void clear();
 
    inline int begin() { return head ? head->bgn : -1; }
    inline int end() { checkTail(); return tail ? tail->end : -1; }
@@ -500,7 +503,8 @@ public:
 
    ~MemoryPool()
    {
-      for (unsigned i = 0; i < (count >> objStepLog2) && allocArray[i]; ++i)
+      unsigned int allocCount = (count + (1 << objStepLog2) - 1) >> objStepLog2;
+      for (unsigned int i = 0; i < allocCount && allocArray[i]; ++i)
          FREE(allocArray[i]);
       if (allocArray)
          FREE(allocArray);

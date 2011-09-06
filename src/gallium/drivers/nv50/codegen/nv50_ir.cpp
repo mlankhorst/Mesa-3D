@@ -263,7 +263,7 @@ LValue::LValue(Function *fn, LValue *lval)
 
 Value *LValue::clone(Function *func) const
 {
-   LValue *that = New_LValue(func, reg.file);
+   LValue *that = new_LValue(func, reg.file);
 
    that->reg.size = this->reg.size;
    that->reg.type = this->reg.type;
@@ -288,7 +288,7 @@ Symbol::clone(Function *func) const
 {
    Program *prog = func->getProgram();
 
-   Symbol *that = New_Symbol(prog, reg.file, reg.fileIndex);
+   Symbol *that = new_Symbol(prog, reg.file, reg.fileIndex);
 
    that->reg.size = this->reg.size;
    that->reg.type = this->reg.type;
@@ -544,7 +544,7 @@ void Instruction::init()
    flagsSrc = -1;
 }
 
-Instruction::Instruction() : extended(0)
+Instruction::Instruction()
 {
    init();
 
@@ -555,8 +555,7 @@ Instruction::Instruction() : extended(0)
    bb = 0;
 }
 
-Instruction::Instruction(Function *fn, operation opr, DataType ty, int ext)
-   : extended(ext)
+Instruction::Instruction(Function *fn, operation opr, DataType ty)
 {
    init();
 
@@ -630,7 +629,7 @@ Instruction::putExtraSources(int s, Value *values[3])
 Instruction *
 Instruction::clone(bool deep) const
 {
-   Instruction *insn = New_Instruction(bb->getFunction(), op, dType);
+   Instruction *insn = new_Instruction(bb->getFunction(), op, dType);
    assert(!asCmp() && !asFlow());
    cloneBase(insn, deep);
    return insn;
@@ -767,7 +766,7 @@ Instruction::isCommutationLegal(const Instruction *i) const
 }
 
 TexInstruction::TexInstruction(Function *fn, operation op)
-   : Instruction(fn, op, TYPE_F32, 1)
+   : Instruction(fn, op, TYPE_F32)
 {
    memset(&tex, 0, sizeof(tex));
 
@@ -775,10 +774,18 @@ TexInstruction::TexInstruction(Function *fn, operation op)
    tex.sIndirectSrc = -1;
 }
 
+TexInstruction::~TexInstruction()
+{
+   for (int c = 0; c < 3; ++c) {
+      dPdx[c].set(NULL);
+      dPdy[c].set(NULL);
+   }
+}
+
 Instruction *
 TexInstruction::clone(bool deep) const
 {
-   TexInstruction *tex = new TexInstruction(bb->getFunction(), op);
+   TexInstruction *tex = new_TexInstruction(bb->getFunction(), op);
    cloneBase(tex, deep);
 
    tex->tex = this->tex;
@@ -816,14 +823,14 @@ const struct TexInstruction::Target::Desc TexInstruction::Target::descTable[] =
 };
 
 CmpInstruction::CmpInstruction(Function *fn, operation op)
-   : Instruction(fn, op, TYPE_F32, 1)
+   : Instruction(fn, op, TYPE_F32)
 {
    setCond = CC_ALWAYS;
 }
 
 FlowInstruction::FlowInstruction(Function *fn, operation op,
                                  BasicBlock *targ)
-   : Instruction(fn, op, TYPE_NONE, 1)
+   : Instruction(fn, op, TYPE_NONE)
 {
    target.bb = targ;
 
@@ -841,8 +848,13 @@ FlowInstruction::FlowInstruction(Function *fn, operation op,
 Program::Program(Type type, Target *arch)
    : progType(type),
      target(arch),
-     InstructionPool(sizeof(Instruction), 6),
-     LValuePool(sizeof(LValue), 8)
+     mem_Instruction(sizeof(Instruction), 6),
+     mem_CmpInstruction(sizeof(CmpInstruction), 4),
+     mem_TexInstruction(sizeof(TexInstruction), 4),
+     mem_FlowInstruction(sizeof(FlowInstruction), 4),
+     mem_LValue(sizeof(LValue), 8),
+     mem_Symbol(sizeof(Symbol), 7),
+     mem_ImmediateValue(sizeof(ImmediateValue), 7)
 {
    code = NULL;
    binSize = 0;
@@ -854,29 +866,38 @@ Program::Program(Type type, Target *arch)
 
 Program::~Program()
 {
-   // free memory (if any)
+   if (main)
+      delete main;
 }
 
 void Program::releaseInstruction(Instruction *insn)
 {
-   if (insn->extended) {
-      delete insn;
-   } else {
-      insn->~Instruction();
-      InstructionPool.release(insn);
-   }
+   // TODO: make this not suck so much
+
+   insn->~Instruction();
+
+   if (insn->asCmp())
+      mem_CmpInstruction.release(insn);
+   else
+   if (insn->asTex())
+      mem_TexInstruction.release(insn);
+   else
+   if (insn->asFlow())
+      mem_FlowInstruction.release(insn);
+   else
+      mem_Instruction.release(insn);
 }
 
 void Program::releaseValue(Value *value)
 {
-   LValue *lval = value->asLValue();
-
-   if (lval) {
-      lval->~LValue();
-      LValuePool.release(lval);
-   } else {
-      delete value;
-   }
+   if (value->asLValue())
+      mem_LValue.release(value);
+   else
+   if (value->asImm())
+      mem_ImmediateValue.release(value);
+   else
+   if (value->asSym())
+      mem_Symbol.release(value);
 }
 
 
@@ -972,7 +993,7 @@ out:
    info->bin.codeSize = prog->binSize;
 
    delete prog;
-   delete targ;
+   nv50_ir::Target::destroy(targ);
 
    return ret;
 }

@@ -72,6 +72,7 @@ class Target
 {
 public:
    static Target *create(uint32_t chipset);
+   static void destroy(Target *);
 
    // 0x50 and 0x84 to 0xaf for nv50
    // 0xc0 to 0xdf for nvc0

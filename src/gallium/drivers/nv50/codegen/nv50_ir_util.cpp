@@ -95,6 +95,12 @@ ArrayList::reallocate(int capacity)
 
 Interval::~Interval()
 {
+   clear();
+}
+
+void
+Interval::clear()
+{
    for (Range *next, *r = head; r; r = next) {
       next = r->next;
       delete r;

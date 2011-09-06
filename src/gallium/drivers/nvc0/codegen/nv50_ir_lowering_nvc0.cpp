@@ -53,7 +53,7 @@ NVC0LegalizeSSA::handleDIV(Instruction *i)
    call->fixed = 1;
    call->absolute = call->builtin = 1;
    call->target.builtin = builtin;
-   Del_Instruction(prog, i);
+   delete_Instruction(prog, i);
 }
 
 void
@@ -111,7 +111,7 @@ private:
 bool
 NVC0LegalizePostRA::visit(Function *fn)
 {
-   r63 = New_LValue(fn, FILE_GPR);
+   r63 = new_LValue(fn, FILE_GPR);
    r63->reg.data.id = 63;
    return true;
 }
@@ -286,7 +286,7 @@ NVC0LoweringPass::handleTEX(TexInstruction *i)
 
    // generate and move the tsc/tic/array source to the front
    if (dim != arg || i->tex.rIndirectSrc >= 0 || i->tex.sIndirectSrc >= 0) {
-      LValue *src = New_LValue(func, FILE_GPR); // 0xttxsaaaa
+      LValue *src = new_LValue(func, FILE_GPR); // 0xttxsaaaa
 
       Value *arrayIndex = i->tex.target.isArray() ? i->getSrc(dim) : NULL;
       for (int s = dim; s >= 1; --s)
@@ -476,7 +476,7 @@ NVC0LoweringPass::handleRDSV(Instruction *i)
    switch (i->getSrc(0)->reg.data.sv.sv) {
    case SV_POSITION:
       assert(prog->getType() == Program::TYPE_FRAGMENT);
-      ld = New_Instruction(func, OP_LINTERP, TYPE_F32);
+      ld = new_Instruction(func, OP_LINTERP, TYPE_F32);
       ld->setDef(0, i->getDef(0));
       ld->setSrc(0, bld.mkSymbol(FILE_SHADER_INPUT, 0, TYPE_F32, addr));
       ld->setInterpolate(NV50_IR_INTERP_LINEAR);
@@ -562,7 +562,7 @@ NVC0LoweringPass::handleEXPORT(Instruction *i)
       i->op = OP_MOV;
       i->src[0].set(i->src[1]);
       i->setSrc(1, NULL);
-      i->setDef(0, New_LValue(func, FILE_GPR));
+      i->setDef(0, new_LValue(func, FILE_GPR));
       i->getDef(0)->reg.data.id = id;
 
       prog->maxGPR = MAX2(prog->maxGPR, id);
@@ -578,7 +578,7 @@ NVC0LoweringPass::handleOUT(Instruction *i)
 {
    if (i->op == OP_RESTART && i->prev && i->prev->op == OP_EMIT) {
       i->prev->subOp = NV50_IR_SUBOP_EMIT_RESTART;
-      Del_Instruction(prog, i);
+      delete_Instruction(prog, i);
    } else {
       assert(gpEmitAddress);
       i->setDef(0, gpEmitAddress);
@@ -599,7 +599,7 @@ NVC0LoweringPass::checkPredicate(Instruction *insn)
 
    if (!pred || pred->reg.file == FILE_PREDICATE)
       return;
-   pdst = New_LValue(func, FILE_PREDICATE);
+   pdst = new_LValue(func, FILE_PREDICATE);
 
    // CAUTION: don't use pdst->getInsn, the definition might not be unique,
    //  delay turning PSET(FSET(x,y),0) into PSET(x,y) to a later pass

@@ -165,7 +165,7 @@ BuildUtil::setPosition(Instruction *i, bool after)
 LValue *
 BuildUtil::getScratch(int size)
 {
-   LValue *lval = New_LValue(func, FILE_GPR);
+   LValue *lval = new_LValue(func, FILE_GPR);
    if (size != 4)
       lval->reg.size = size;
    return lval;
@@ -174,7 +174,7 @@ BuildUtil::getScratch(int size)
 LValue *
 BuildUtil::getSSA(int size)
 {
-   LValue *lval = New_LValue(func, FILE_GPR);
+   LValue *lval = new_LValue(func, FILE_GPR);
    lval->ssa = 1;
    if (size != 4)
       lval->reg.size = size;
@@ -198,7 +198,7 @@ void BuildUtil::insert(Instruction *i)
 Instruction *
 BuildUtil::mkOp(operation op, DataType ty, Value *dst)
 {
-   Instruction *insn = New_Instruction(func, op, ty);
+   Instruction *insn = new_Instruction(func, op, ty);
    insn->setDef(0, dst);
    insert(insn);
    if (op == OP_DISCARD || op == OP_EXIT ||
