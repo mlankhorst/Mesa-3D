@@ -25,30 +25,46 @@ public:
    {
    public:
       SrcRegister(const struct tgsi_full_src_register *src)
+         : reg(src->Register),
+           fsr(src)
+      { }
+
+      SrcRegister(const struct tgsi_src_register& src) : reg(src), fsr(NULL) { }
+
+      struct tgsi_src_register offsetToSrc(struct tgsi_texture_offset off)
       {
-         fsr = src;
-         reg = &fsr->Register;
+         struct tgsi_src_register reg;
+         memset(&reg, 0, sizeof(reg));
+         reg.Index = off.Index;
+         reg.File = off.File;
+         reg.SwizzleX = off.SwizzleX;
+         reg.SwizzleY = off.SwizzleY;
+         reg.SwizzleZ = off.SwizzleZ;
+         return reg;
       }
 
-      SrcRegister(const struct tgsi_src_register *src) : reg(src), fsr(0) { }
+      SrcRegister(const struct tgsi_texture_offset& off) :
+         reg(offsetToSrc(off)),
+         fsr(NULL)
+      { }
 
-      uint getFile() const { return reg->File; }
+      uint getFile() const { return reg.File; }
 
-      bool is2D() const { return reg->Dimension; }
+      bool is2D() const { return reg.Dimension; }
 
       bool isIndirect(int dim) const
       {
-         return (dim && fsr) ? fsr->Dimension.Indirect : reg->Indirect;
+         return (dim && fsr) ? fsr->Dimension.Indirect : reg.Indirect;
       }
 
       int getIndex(int dim) const
       {
-         return (dim && fsr) ? fsr->Dimension.Index : reg->Index;
+         return (dim && fsr) ? fsr->Dimension.Index : reg.Index;
       }
 
       int getSwizzle(int chan) const
       {
-         return tgsi_util_get_src_register_swizzle(reg, chan);
+         return tgsi_util_get_src_register_swizzle(&reg, chan);
       }
 
       nv50_ir::Modifier getMod(int chan) const;
@@ -57,12 +73,20 @@ public:
       {
          assert(fsr && isIndirect(dim));
          if (dim)
-            return SrcRegister(&fsr->DimIndirect);
-         return SrcRegister(&fsr->Indirect);
+            return SrcRegister(fsr->DimIndirect);
+         return SrcRegister(fsr->Indirect);
+      }
+
+      uint32_t getValueU32(int c, const struct nv50_ir_prog_info *info) const
+      {
+         assert(reg.File == TGSI_FILE_IMMEDIATE);
+         assert(!reg.Absolute);
+         assert(!reg.Negate);
+         return info->immd.data[reg.Index * 4 + getSwizzle(c)];
       }
 
    private:
-      const struct tgsi_src_register *reg;
+      const struct tgsi_src_register reg;
       const struct tgsi_full_src_register *fsr;
    };
 
@@ -70,28 +94,27 @@ public:
    {
    public:
       DstRegister(const struct tgsi_full_dst_register *dst)
-      {
-         fdr = dst;
-         reg = &fdr->Register;
-      }
+         : reg(dst->Register),
+           fdr(dst)
+      { }
 
-      DstRegister(const struct tgsi_dst_register *dst) : reg(dst), fdr(0) { }
+      DstRegister(const struct tgsi_dst_register& dst) : reg(dst), fdr(NULL) { }
 
-      uint getFile() const { return reg->File; }
+      uint getFile() const { return reg.File; }
 
-      bool is2D() const { return reg->Dimension; }
+      bool is2D() const { return reg.Dimension; }
 
       bool isIndirect(int dim) const
       {
-         return (dim && fdr) ? fdr->Dimension.Indirect : reg->Indirect;
+         return (dim && fdr) ? fdr->Dimension.Indirect : reg.Indirect;
       }
 
       int getIndex(int dim) const
       {
-         return (dim && fdr) ? fdr->Dimension.Dimension : reg->Index;
+         return (dim && fdr) ? fdr->Dimension.Dimension : reg.Index;
       }
 
-      unsigned int getMask() const { return reg->WriteMask; }
+      unsigned int getMask() const { return reg.WriteMask; }
 
       bool isMasked(int chan) const { return !(getMask() & (1 << chan)); }
 
@@ -99,12 +122,12 @@ public:
       {
          assert(fdr && isIndirect(dim));
          if (dim)
-            return SrcRegister(&fdr->DimIndirect);
-         return SrcRegister(&fdr->Indirect);
+            return SrcRegister(fdr->DimIndirect);
+         return SrcRegister(fdr->Indirect);
       }
 
    private:
-      const struct tgsi_dst_register *reg;
+      const struct tgsi_dst_register reg;
       const struct tgsi_full_dst_register *fdr;
    };
 
@@ -127,6 +150,14 @@ public:
       assert(d < dstCount());
       return DstRegister(&insn->Dst[d]);
    }
+
+   SrcRegister getTexOffset(unsigned int i) const
+   {
+      assert(i < TGSI_FULL_MAX_TEX_OFFSETS);
+      return SrcRegister(insn->TexOffsets[i]);
+   }
+
+   unsigned int getNumTexOffsets() const { return insn->Texture.NumOffsets; }
 
    bool checkDstSrcAliasing() const;
 
@@ -233,9 +264,9 @@ nv50_ir::Modifier Instruction::SrcRegister::getMod(int chan) const
 {
    nv50_ir::Modifier m(0);
 
-   if (reg->Absolute)
+   if (reg.Absolute)
       m = m | nv50_ir::Modifier(NV50_IR_MOD_ABS);
-   if (reg->Negate)
+   if (reg.Negate)
       m = m | nv50_ir::Modifier(NV50_IR_MOD_NEG);
    return m;
 }
@@ -868,7 +899,6 @@ public:
    bool run();
 
 private:
-   uint32_t fetchImm32(int s, int c);
    Value *getVertexBase(int s);
    Value *fetchSrc(int s, int c);
    Value *acquireDst(int d, int c);
@@ -1029,14 +1059,6 @@ Converter::applySrcMod(Value *val, int s, int c)
       val = mkOp1v(OP_NEG, ty, getScratch(), val);
 
    return val;
-}
-
-uint32_t
-Converter::fetchImm32(int s, int c)
-{
-   tgsi::Instruction::SrcRegister src = tgsi.getSrc(s);
-   assert(src.getFile() == TGSI_FILE_IMMEDIATE);
-   return info->immd.data[src.getIndex(0) * 4 + src.getSwizzle(c)];
 }
 
 Value *
@@ -1308,6 +1330,8 @@ Converter::handleTXQ(Value *dst0[4], enum TexQuery query)
    tex->setSrc((c = 0), fetchSrc(0, 0)); // mip level
 
    setTexRS(tex, c, 1, -1);
+
+   bb->insertTail(tex);
 }
 
 void
@@ -1434,7 +1458,7 @@ void
 Converter::handleTXF(Value *dst[4], int R)
 {
    TexInstruction *texi = new TexInstruction(func, tgsi.getOP());
-   unsigned int c, d;
+   unsigned int c, d, s;
 
    texi->tex.target = tgsi.getTexture(code, R);
 
@@ -1450,11 +1474,15 @@ Converter::handleTXF(Value *dst[4], int R)
 
    setTexRS(texi, c, R, -1);
 
-   for (c = 0; c < 3; ++c) {
-      texi->tex.offset[0][c] = fetchImm32(1, c);
-      if (texi->tex.offset[0][c])
-         texi->tex.useOffsets = 1;
+   for (s = 0; s < tgsi.getNumTexOffsets(); ++s) {
+      for (c = 0; c < 3; ++c) {
+         texi->tex.offset[s][c] = tgsi.getTexOffset(s).getValueU32(c, info);
+         if (texi->tex.offset[s][c])
+            texi->tex.useOffsets = s + 1;
+      }
    }
+
+   bb->insertTail(texi);
 }
 
 void
@@ -1812,8 +1840,6 @@ Converter::handleInstruction(const struct tgsi_full_instruction *insn)
       handleTEX(dst0, 1, 2, 0x30, 0x31, 0x40, 0x50);
       break;
    case TGSI_OPCODE_TXF:
-      handleTXF(dst0, 2);
-      break;
    case TGSI_OPCODE_LOAD:
       handleTXF(dst0, 1);
       break;
@@ -1834,7 +1860,8 @@ Converter::handleInstruction(const struct tgsi_full_instruction *insn)
    case TGSI_OPCODE_EMIT:
    case TGSI_OPCODE_ENDPRIM:
       // get vertex stream if specified (must be immediate)
-      src0 = tgsi.srcCount() ? mkImm(fetchImm32(0, 0)) : zero;
+      src0 = tgsi.srcCount() ?
+         mkImm(tgsi.getSrc(0).getValueU32(0, info)) : zero;
       mkOp1(op, TYPE_U32, NULL, src0)->fixed = 1;
       break;
    case TGSI_OPCODE_IF:
@@ -1929,6 +1956,7 @@ Converter::handleInstruction(const struct tgsi_full_instruction *insn)
          break;
       BasicBlock *contBB = reinterpret_cast<BasicBlock *>(loopBBs.peek().u.p);
       mkFlow(OP_CONT, contBB, CC_ALWAYS, NULL);
+      contBB->explicitCont = true;
       bb->cfg.attach(&contBB->cfg, Graph::Edge::BACK);
    }
       break;

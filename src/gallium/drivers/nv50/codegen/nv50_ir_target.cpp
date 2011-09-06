@@ -4,6 +4,34 @@
 
 namespace nv50_ir {
 
+const uint8_t Target::operationSrcNr[OP_LAST + 1] =
+{
+   0, 0,                   // NOP, PHI
+   0, 0, 0, 0,             // UNION, SPLIT, MERGE, CONSTRAINT
+   1, 1, 2,                // MOV, LOAD, STORE
+   2, 2, 2, 2, 2, 3, 3, 3, // ADD, SUB, MUL, DIV, MOD, MAD, FMA, SAD
+   1, 1, 1,                // ABS, NEG, NOT
+   2, 2, 2, 2, 2,          // AND, OR, XOR, SHL, SHR
+   2, 2, 1,                // MAX, MIN, SAT
+   1, 1, 1, 1,             // CEIL, FLOOR, TRUNC, CVT
+   3, 3, 3, 2, 3, 3,       // SET_AND,OR,XOR, SET, SELP, SLCT
+   1, 1, 1, 1, 1, 1,       // RCP, RSQ, LG2, SIN, COS, EX2
+   1, 1, 1, 1, 1, 2,       // EXP, LOG, PRESIN, PREEX2, SQRT, POW
+   0, 0, 0, 0, 0,          // BRA, CALL, RET, CONT, BREAK,
+   0, 0, 0,                // PRERET,CONT,BREAK
+   0, 0, 0, 0, 0, 0,       // BRKPT, JOINAT, JOIN, DISCARD, EXIT, MEMBAR
+   1, 1, 2, 1, 2,          // VFETCH, PFETCH, EXPORT, LINTERP, PINTERP
+   1, 1,                   // EMIT, RESTART
+   1, 1, 1,                // TEX, TXB, TXL,
+   1, 1, 1, 1, 1,          // TXF, TXQ, TXD, TXG, TEXCSAA
+   1, 2,                   // SULD, SUST
+   1, 1,                   // DFDX, DFDY
+   1, 2, 2, 2, 0, 0,       // RDSV, WRSV, PIXLD, QUADOP, QUADON, QUADPOP
+   2, 3, 2,                // POPCNT, INSBF, EXTBF
+   0
+};
+
+
 extern Target *getTargetNVC0(unsigned int chipset);
 
 Target *Target::create(unsigned int chipset)

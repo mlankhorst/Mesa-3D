@@ -178,32 +178,6 @@ TargetNVC0::getBuiltinOffset(int builtin) const
    return nvc0_builtin_offsets[builtin];
 }
 
-static const uint8_t opInfo_srcNr[OP_LAST + 1] =
-{
-   0, 0, 0, 0, 0, 0,
-   1, 1, 2,
-   2, 2, 2, 2, 2, 3, 3, 3,
-   1, 1, 1,
-   2, 2, 2, 2, 2,
-   2, 2, 1,
-   1, 1, 1, 1,
-   3, 3, 3, 2, 3, 3,
-   1, 1, 1, 1, 1, 1,
-   2, 2, 1, 1, 1, 2,
-   0, 0, 0, 0, 0,
-   0, 0, 0,
-   0, 0, 0, 0, 0, 0,
-   1, 1, 2, 1, 2,
-   0, 0,
-   1, 1, 1,
-   1, 0, 1, 1, 1,
-   1, 2,
-   1, 1,
-   1, 2, 2, 2, 0, 0,
-   2, 3, 2,
-   0
-};
-
 struct opProperties
 {
    operation op;
@@ -287,7 +261,7 @@ void TargetNVC0::initOpInfo()
       opInfo[i].srcTypes = 1 << (int)TYPE_F32;
       opInfo[i].dstTypes = 1 << (int)TYPE_F32;
       opInfo[i].immdBits = 0;
-      opInfo[i].srcNr = opInfo_srcNr[i];
+      opInfo[i].srcNr = operationSrcNr[i];
 
       for (j = 0; j < opInfo[i].srcNr; ++j) {
          opInfo[i].srcMods[j] = 0;
@@ -394,8 +368,10 @@ TargetNVC0::insnCanLoad(const Instruction *i, int s,
 
    // immediate 0 can be represented by GPR $r63
    if (sf == FILE_IMMEDIATE && ld->getSrc(0)->reg.data.u64 == 0)
-      return true;
+      return (!i->asTex() && i->op != OP_EXPORT && i->op != OP_STORE);
 
+   if (s > opInfo[i->op].srcNr)
+      return false;
    if (!(opInfo[i->op].srcFiles[s] & (1 << (int)sf)))
       return false;
 
@@ -473,6 +449,8 @@ TargetNVC0::isModSupported(const Instruction *insn, int s, Modifier mod) const
          return false;
       }
    }
+   if (s > 3)
+      return false;
    return (mod & Modifier(opInfo[insn->op].srcMods[s])) == mod;
 }
 

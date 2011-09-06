@@ -995,6 +995,8 @@ CodeEmitterNVC0::emitTXQ(const TexInstruction *i)
       break;
    }
 
+   code[1] |= i->tex.mask << 14;
+
    code[1] |= i->tex.r;
    code[1] |= i->tex.s << 8;
    if (i->tex.sIndirectSrc >= 0 || i->tex.rIndirectSrc >= 0)
@@ -1003,6 +1005,8 @@ CodeEmitterNVC0::emitTXQ(const TexInstruction *i)
    defId(i->def[0], 14);
    srcId(i->src[0], 20);
    srcId(i->src[1], 26);
+
+   emitPredicate(i);
 }
 
 void
@@ -1564,7 +1568,11 @@ CodeEmitterNVC0::emitInstruction(Instruction *insn)
    case OP_TXB:
    case OP_TXL:
    case OP_TXD:
+   case OP_TXF:
       emitTEX(insn->asTex());
+      break;
+   case OP_TXQ:
+      emitTXQ(insn->asTex());
       break;
    case OP_BRA:
    case OP_CALL:

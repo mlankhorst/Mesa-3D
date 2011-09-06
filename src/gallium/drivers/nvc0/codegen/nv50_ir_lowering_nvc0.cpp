@@ -313,18 +313,15 @@ NVC0LoweringPass::handleTEX(TexInstruction *i)
       i->setSrc(0, src);
    }
 
-   // insert the offset source between coordinates and lod/bias, shadow
+   // offset is last source (lod 1st, dc 2nd)
    if (i->tex.useOffsets) {
-      int s = arg + i->tex.target.isShadow();
-      if (i->op == OP_TXB || i->op == OP_TXL)
-         ++s;
-      for (; s > arg; --s)
-         i->setSrc(s, i->getSrc(s - 1));
-
-      i->setSrc(arg, bld.loadImm(NULL,
-                                 ((i->tex.offset[0][0] & 0xf) << 0) |
-                                 ((i->tex.offset[0][1] & 0xf) << 4) |
-                                 ((i->tex.offset[0][2] & 0xf) << 8)));
+      uint32_t value = 0;
+      int n, c;
+      int s = i->srcCount(0xff);
+      for (n = 0; n < i->tex.useOffsets; ++n)
+         for (c = 0; c < 3; ++c)
+            value |= (i->tex.offset[n][c] & 0xf) << (n * 12 + c * 4);
+      i->setSrc(s, bld.loadImm(NULL, value));
    }
 
    return true;

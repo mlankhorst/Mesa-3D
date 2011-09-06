@@ -1502,18 +1502,25 @@ FlatteningPass::removeFlow(Instruction *insn)
    FlowInstruction *term = insn ? insn->asFlow() : NULL;
    if (!term)
       return;
+   Graph::Edge::Type ty = term->bb->cfg.outgoing().getType();
+
+   if (term->op == OP_BRA) {
+      // TODO: this might get more difficult when we get arbitrary BRAs
+      if (ty == Graph::Edge::CROSS || ty == Graph::Edge::BACK)
+         return;
+   } else
+   if (term->op != OP_JOIN)
+      return;
+
+   Del_Instruction(prog, term);
+
    Value *pred = term->getPredicate();
 
-   if (term->op == OP_JOIN || term->op == OP_BRA) {
-      // TODO: this will be more difficult when we get arbitrary BRAs
-      Del_Instruction(prog, term);
-
-      if (pred && pred->refCount() == 0) {
-         Instruction *pSet = pred->getUniqueInsn();
-         pred->join->reg.data.id = -1; // deallocate
-         if (pSet->isDead())
-            Del_Instruction(prog, pSet);
-      }
+   if (pred && pred->refCount() == 0) {
+      Instruction *pSet = pred->getUniqueInsn();
+      pred->join->reg.data.id = -1; // deallocate
+      if (pSet->isDead())
+         Del_Instruction(prog, pSet);
    }
 }
 
@@ -1758,6 +1765,16 @@ Instruction::isResultEqual(const Instruction *that) const
    }
    if (that->srcExists(s))
       return false;
+
+   if (op == OP_LOAD || op == OP_VFETCH) {
+      switch (src[0].getFile()) {
+      case FILE_MEMORY_CONST:
+      case FILE_SHADER_INPUT:
+         return true;
+      default:
+         return false;
+      }
+   }
 
    return true;
 }

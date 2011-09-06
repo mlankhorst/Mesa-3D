@@ -130,6 +130,8 @@ public:
 public:
    bool joinAnterior; // true if join is executed before the op
 
+   static const uint8_t operationSrcNr[OP_LAST + 1];
+
 protected:
    uint32_t chipset;
 

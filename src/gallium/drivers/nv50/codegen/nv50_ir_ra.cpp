@@ -892,9 +892,18 @@ RegAlloc::InsertConstraintsPass::visit(BasicBlock *bb)
       if ((tex = i->asTex())) {
          textureMask(tex);
 
-         s = tex->tex.target.getArgCount();
-         n = tex->srcCount(0xff) - s;
-         assert(n <= 4);
+         // FIXME: this is target specific
+         if (tex->op == OP_TXQ) {
+            s = tex->srcCount(0xff);
+            n = 0;
+         } else {
+            s = tex->tex.target.getArgCount();
+            if (!tex->tex.target.isArray() &&
+                (tex->tex.rIndirectSrc >= 0 || tex->tex.sIndirectSrc >= 0))
+               ++s;
+            n = tex->srcCount(0xff) - s;
+            assert(n <= 4);
+         }
 
          if (s > 1)
             addConstraint(i, 0, s);

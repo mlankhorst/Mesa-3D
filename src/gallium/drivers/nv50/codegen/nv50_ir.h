@@ -104,8 +104,8 @@ enum operation
    OP_QUADOP,
    OP_QUADON,
    OP_QUADPOP,
-   OP_POPCNT,
-   OP_INSBF, // insert first src1[8:15] bits of src0 into src2 at src1[0:7]
+   OP_POPCNT, // bitcount(src0 & src1)
+   OP_INSBF,  // insert first src1[8:15] bits of src0 into src2 at src1[0:7]
    OP_EXTBF,
    OP_LAST
 };
@@ -878,6 +878,8 @@ public:
    uint32_t binSize;
 
    Instruction *joinAt; // for quick reference
+
+   bool explicitCont; // loop headers: true if loop contains continue stmts
 
 private:
    int id;
