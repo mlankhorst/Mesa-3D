@@ -20,9 +20,6 @@ struct nvc0_program {
    unsigned code_size;
    unsigned parm_size; /* size of non-bindable uniforms (c0[]) */
 
-   unsigned immd32_nr;
-   uint32_t *immd32; /* immediate array constant buffer (c16[]) */
-
    uint32_t hdr[20];
    uint32_t flags[2];
 
