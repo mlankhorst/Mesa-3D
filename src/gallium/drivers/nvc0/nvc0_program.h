@@ -16,8 +16,11 @@ struct nvc0_program {
    uint8_t max_gpr;
 
    uint32_t *code;
+   uint32_t *immd_data;
    unsigned code_base;
    unsigned code_size;
+   unsigned immd_base;
+   unsigned immd_size; /* size of immediate array data */
    unsigned parm_size; /* size of non-bindable uniforms (c0[]) */
 
    uint32_t hdr[20];

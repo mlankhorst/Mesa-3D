@@ -499,9 +499,9 @@ nvc0_program_translate(struct nvc0_program *prog)
 
    prog->code = info->bin.code;
    prog->code_size = info->bin.codeSize;
+   prog->immd_data = info->immd.buffer;
+   prog->immd_size = info->immd.bufferSize / 4;
    prog->relocs = info->bin.relocData;
-   prog->immd32 = info->immd.buffer;
-   prog->immd32_nr = info->immd.bufferSize / 4;
    prog->max_gpr = MAX2(4, (info->bin.maxGPR + 1));
 
    prog->vp.edgeflag = PIPE_MAX_ATTRIBS;
@@ -556,7 +556,13 @@ nvc0_program_upload_code(struct nvc0_context *nvc0, struct nvc0_program *prog)
    uint32_t lib_pos = screen->lib_code->start;
    uint32_t code_pos;
 
-   size = align(prog->code_size + NVC0_SHADER_HEADER_SIZE, 0x100);
+   prog->immd_base = prog->code_size + NVC0_SHADER_HEADER_SIZE;
+   if (prog->immd_size) {
+      prog->immd_base = align(prog->immd_base, 0x100);
+      size = prog->immd_base + align(prog->immd_size, 0x40);
+   } else {
+      size = align(prog->immd_base, 0x40);
+   }
 
    ret = nouveau_resource_alloc(screen->text_heap, size, prog, &prog->res);
    if (ret) {
@@ -564,8 +570,9 @@ nvc0_program_upload_code(struct nvc0_context *nvc0, struct nvc0_program *prog)
       return FALSE;
    }
    prog->code_base = prog->res->start;
-
    code_pos = prog->code_base + NVC0_SHADER_HEADER_SIZE;
+
+   prog->immd_base += prog->res->start;
 
    if (prog->relocs)
       nv50_ir_relocate_code(prog->relocs, prog->code, code_pos, lib_pos, 0);
@@ -580,6 +587,10 @@ nvc0_program_upload_code(struct nvc0_context *nvc0, struct nvc0_program *prog)
    nvc0_m2mf_push_linear(&nvc0->base, screen->text,
                          prog->code_base + NVC0_SHADER_HEADER_SIZE,
                          NOUVEAU_BO_VRAM, prog->code_size, prog->code);
+   if (prog->immd_size)
+      nvc0_m2mf_push_linear(&nvc0->base, screen->text,
+                            prog->immd_base,
+                            NOUVEAU_BO_VRAM, prog->immd_size, prog->immd_data);
 
    BEGIN_RING(screen->base.channel, RING_3D(MEM_BARRIER), 1);
    OUT_RING  (screen->base.channel, 0x1111);
@@ -622,6 +633,8 @@ nvc0_program_destroy(struct nvc0_context *nvc0, struct nvc0_program *prog)
 
    if (prog->code)
       FREE(prog->code);
+   if (prog->immd_data)
+      FREE(prog->immd_data);
    if (prog->relocs)
       FREE(prog->relocs);
 

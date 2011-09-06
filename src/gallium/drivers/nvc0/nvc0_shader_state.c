@@ -31,10 +31,31 @@ static INLINE void
 nvc0_program_update_context_state(struct nvc0_context *nvc0,
                                   struct nvc0_program *prog, int stage)
 {
+   struct nouveau_channel *chan = nvc0->screen->base.channel;
+
    if (prog->hdr[1])
       nvc0->state.tls_required |= 1 << stage;
    else
       nvc0->state.tls_required &= ~(1 << stage);
+
+   if (prog->immd_size) {
+      const unsigned rl = NOUVEAU_BO_VRAM | NOUVEAU_BO_RD;
+
+      BEGIN_RING(chan, RING_3D(CB_SIZE), 3);
+      OUT_RING  (chan, prog->immd_size);
+      OUT_RELOCh(chan, nvc0->screen->text, prog->immd_base, rl);
+      OUT_RELOCl(chan, nvc0->screen->text, prog->immd_base, rl);
+      BEGIN_RING(chan, RING_3D(CB_BIND(stage)), 1);
+      OUT_RING  (chan, (14 << 4) | 1);
+
+      nvc0->state.c14_bound |= 1 << stage;
+   } else
+   if (nvc0->state.c14_bound & (1 << stage)) {
+      BEGIN_RING(chan, RING_3D(CB_BIND(stage)), 1);
+      OUT_RING  (chan, (14 << 4) | 0);
+
+      nvc0->state.c14_bound &= ~(1 << stage);
+   }
 }
 
 static INLINE boolean
