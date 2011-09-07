@@ -556,11 +556,14 @@ public:
    const struct tgsi_token *tokens;
    struct nv50_ir_prog_info *info;
 
+   uint32_t *arraySizes;
+   unsigned arrayCount;
+
    uint8_t *resourceTargets; // TGSI_TEXTURE_*
-   unsigned int resourceCount;
+   unsigned resourceCount;
 
    Subroutine *subroutines;
-   unsigned int subroutineCount;
+   unsigned subroutineCount;
 
 private:
    int inferSysValDirection(unsigned sn) const;
@@ -576,6 +579,10 @@ Source::Source(struct nv50_ir_prog_info *prog) : info(prog)
 {
    tokens = (const struct tgsi_token *)info->bin.source;
    tgsi_dump(tokens, 0);
+
+   arraySizes = NULL;
+   resourceTargets = NULL;
+   subroutines = NULL;
 }
 
 Source::~Source()
@@ -587,6 +594,9 @@ Source::~Source()
       FREE(info->immd.data);
    if (info->immd.type)
       FREE(info->immd.type);
+
+   if (arraySizes)
+      FREE(arraySizes);
 
    if (resourceTargets)
       delete[] resourceTargets;
@@ -612,6 +622,11 @@ bool Source::scanSource()
 
    subroutineCount = scan.opcode_count[TGSI_OPCODE_BGNSUB] + 1;
    subroutines = new Subroutine[subroutineCount];
+
+   info->immd.bufferSize = (scan.file_max[TGSI_FILE_IMMEDIATE_ARRAY] + 1) * 16;
+   info->immd.buffer = (uint32_t *)CALLOC(info->immd.bufferSize, 1);
+
+   arrayCount = 0;
 
    info->numInputs = scan.file_max[TGSI_FILE_INPUT] + 1;
    info->numOutputs = scan.file_max[TGSI_FILE_OUTPUT] + 1;
@@ -798,14 +813,31 @@ bool Source::scanDeclaration(const struct tgsi_full_declaration *decl)
       for (i = first; i <= last; ++i)
          resourceTargets[i] = decl->Resource.Resource;
       break;
+   case TGSI_FILE_IMMEDIATE_ARRAY:
+      for (i = first * 4; i < (last + 1) * 4; ++i)
+         info->immd.buffer[i] = decl->ImmediateData.u[i].Uint;
+      break;
+   case TGSI_FILE_TEMPORARY_ARRAY:
+      // reallocate array of arraySizes if necessary (in steps of 8)
+      if (decl->Dim.Index2D >= ((arrayCount + 7) & ~7)) {
+         unsigned base = ((arrayCount + 7) & ~7) * 4;
+         unsigned incr = ((decl->Dim.Index2D + 7) & ~7) * 4 - base;
+         arraySizes = (uint32_t *)REALLOC(arraySizes, base, base + incr);
+         memset(&arraySizes[base / 4], 0, incr);
+      }
+      if (decl->Dim.Index2D >= arrayCount)
+         arrayCount = decl->Dim.Index2D + 1;
+      /* array should only have 1 declaration */
+      assert(arraySizes[decl->Dim.Index2D] == 0);
+      arraySizes[decl->Dim.Index2D] = (last + 1) * 16;
+      info->bin.tlsSize += arraySizes[decl->Dim.Index2D];
+      break;
    case TGSI_FILE_NULL:
    case TGSI_FILE_ADDRESS:
    case TGSI_FILE_CONSTANT:
    case TGSI_FILE_IMMEDIATE:
    case TGSI_FILE_PREDICATE:
    case TGSI_FILE_SAMPLER:
-   // case TGSI_FILE_TEMPORARY_ARRAY: // TODO
-   // case TGSI_FILE_IMMEDIATE_ARRAY: // TODO
       break;
    default:
       ERROR("unhandled TGSI_FILE %d\n", decl->Declaration.File);
@@ -949,6 +981,8 @@ private:
    DataArray aData; // TGSI_FILE_ADDRESS
    DataArray pData; // TGSI_FILE_PREDICATE
    DataArray oData; // TGSI_FILE_OUTPUT (if outputs in registers)
+   DataArray *lData; // TGSI_FILE_TEMPORARY_ARRAY
+   int nrArrays; // nr of temporary arrays
 
    Value *zero;
    Value *fragCoord[4];
@@ -1124,9 +1158,16 @@ Converter::fetchSrc(tgsi::Instruction::SrcRegister src, int c, Value *ptr)
    case TGSI_FILE_ADDRESS:
       return aData.load(idx, swz, ptr);
 
+   case TGSI_FILE_TEMPORARY_ARRAY:
+      assert(src.is2D() && src.getIndex(1) < nrArrays);
+      return lData[src.getIndex(1)].load(idx, swz, ptr);
+
    case TGSI_FILE_IMMEDIATE:
       assert(!ptr);
       return loadImm(NULL, info->immd.data[idx * 4 + swz]);
+   case TGSI_FILE_IMMEDIATE_ARRAY:
+      return mkLoad(TYPE_U32, mkSymbol(FILE_MEMORY_CONST, 14, TYPE_U32,
+                                       idx * 16 + swz * 4), ptr);
 
    case TGSI_FILE_CONSTANT:
       return mkLoad(TYPE_U32, srcToSym(src, c), ptr);
@@ -1147,8 +1188,6 @@ Converter::fetchSrc(tgsi::Instruction::SrcRegister src, int c, Value *ptr)
    case TGSI_FILE_OUTPUT:
    case TGSI_FILE_RESOURCE:
    case TGSI_FILE_SAMPLER:
-   case TGSI_FILE_IMMEDIATE_ARRAY:
-   case TGSI_FILE_TEMPORARY_ARRAY:
    case TGSI_FILE_NULL:
    default:
       assert(!"invalid/unhandled TGSI source file");
@@ -1171,6 +1210,8 @@ Converter::acquireDst(int d, int c)
    switch (dst.getFile()) {
    case TGSI_FILE_TEMPORARY:
       return tData.acquire(idx, c);
+   case TGSI_FILE_TEMPORARY_ARRAY:
+      return getScratch();
    case TGSI_FILE_PREDICATE:
       return pData.acquire(idx, c);
    case TGSI_FILE_ADDRESS:
@@ -1183,7 +1224,6 @@ Converter::acquireDst(int d, int c)
    case TGSI_FILE_SYSTEM_VALUE:
       return getScratch();
 
-   case TGSI_FILE_TEMPORARY_ARRAY: // XXX: undefined behaviour
    default:
       assert(!"invalid dst file");
       return NULL;
@@ -1233,6 +1273,10 @@ Converter::storeDst(const tgsi::Instruction::DstRegister dst, int c,
    case TGSI_FILE_TEMPORARY:
       tData.store(idx, c, ptr, val);
       break;
+   case TGSI_FILE_TEMPORARY_ARRAY:
+      assert(dst.is2D() && dst.getIndex(1) < nrArrays);
+      lData[dst.getIndex(1)].store(idx, c, ptr, val);
+      break;
    case TGSI_FILE_PREDICATE:
       pData.store(idx, c, ptr, val);
       break;
@@ -1252,7 +1296,6 @@ Converter::storeDst(const tgsi::Instruction::DstRegister dst, int c,
       mkOp2(OP_WRSV, TYPE_U32, NULL, dstToSym(dst, c), val);
       break;
 
-   case TGSI_FILE_TEMPORARY_ARRAY: // XXX: undefined behaviour
    default:
       assert(!"invalid dst file");
       break;
@@ -2098,6 +2141,8 @@ Converter::Converter(Program *ir, const tgsi::Source *src)
    aData.setup(0, code->fileSize(TGSI_FILE_ADDRESS), 4, 4, FILE_ADDRESS);
    oData.setup(0, code->fileSize(TGSI_FILE_OUTPUT), 4, 4, FILE_GPR);
 
+   lData = NULL;
+
    zero = mkImm((uint32_t)0);
 
    vtxBaseValid = 0;
@@ -2105,7 +2150,8 @@ Converter::Converter(Program *ir, const tgsi::Source *src)
 
 Converter::~Converter()
 {
-   // nothing to do (yet)
+   if (lData)
+      delete[] lData;
 }
 
 bool
@@ -2113,6 +2159,18 @@ Converter::run()
 {
    BasicBlock *entry = new BasicBlock(prog->main);
    BasicBlock *leave = new BasicBlock(prog->main);
+
+   if (code->arrayCount && !lData) {
+      uint32_t arrayVol = 0;
+      lData = new DataArray[code->arrayCount];
+      if (!lData)
+         return false;
+      for (unsigned int i = 0; i < code->arrayCount; ++i) {
+         lData[i].setParent(this);
+         lData[i].setup(arrayVol, code->arraySizes[i], 4, 4, FILE_MEMORY_LOCAL);
+         arrayVol += code->arraySizes[i];
+      }
+   }
 
    prog->main->setEntry(entry);
 
