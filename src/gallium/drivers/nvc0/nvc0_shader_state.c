@@ -42,7 +42,8 @@ nvc0_program_update_context_state(struct nvc0_context *nvc0,
       const unsigned rl = NOUVEAU_BO_VRAM | NOUVEAU_BO_RD;
 
       BEGIN_RING(chan, RING_3D(CB_SIZE), 3);
-      OUT_RING  (chan, prog->immd_size);
+      /* NOTE: may overlap code of a different shader */
+      OUT_RING  (chan, align(prog->immd_size, 0x100));
       OUT_RELOCh(chan, nvc0->screen->text, prog->immd_base, rl);
       OUT_RELOCl(chan, nvc0->screen->text, prog->immd_base, rl);
       BEGIN_RING(chan, RING_3D(CB_BIND(stage)), 1);

@@ -500,7 +500,7 @@ nvc0_program_translate(struct nvc0_program *prog)
    prog->code = info->bin.code;
    prog->code_size = info->bin.codeSize;
    prog->immd_data = info->immd.buffer;
-   prog->immd_size = info->immd.bufferSize / 4;
+   prog->immd_size = info->immd.bufferSize;
    prog->relocs = info->bin.relocData;
    prog->max_gpr = MAX2(4, (info->bin.maxGPR + 1));
 
@@ -552,17 +552,18 @@ nvc0_program_upload_code(struct nvc0_context *nvc0, struct nvc0_program *prog)
 {
    struct nvc0_screen *screen = nvc0->screen;
    int ret;
-   uint32_t size;
+   uint32_t size = prog->code_size + NVC0_SHADER_HEADER_SIZE;
    uint32_t lib_pos = screen->lib_code->start;
    uint32_t code_pos;
 
-   prog->immd_base = prog->code_size + NVC0_SHADER_HEADER_SIZE;
+   /* c[] bindings need to be aligned to 0x100, but we could use relocations
+    * to save space. */
    if (prog->immd_size) {
-      prog->immd_base = align(prog->immd_base, 0x100);
-      size = prog->immd_base + align(prog->immd_size, 0x40);
-   } else {
-      size = align(prog->immd_base, 0x40);
+      prog->immd_base = size;
+      size = align(size, 0x40);
+      size += prog->immd_size + 0xc0; /* add 0xc0 for align 0x40 -> 0x100 */
    }
+   size = align(size, 0x40); /* required by SP_START_ID */
 
    ret = nouveau_resource_alloc(screen->text_heap, size, prog, &prog->res);
    if (ret) {
@@ -570,9 +571,11 @@ nvc0_program_upload_code(struct nvc0_context *nvc0, struct nvc0_program *prog)
       return FALSE;
    }
    prog->code_base = prog->res->start;
-   code_pos = prog->code_base + NVC0_SHADER_HEADER_SIZE;
+   prog->immd_base = align(prog->res->start + prog->immd_base, 0x100);
+   assert(prog->immd_base + prog->immd_size <
+          prog->res->start + prog->res->size);
 
-   prog->immd_base += prog->res->start;
+   code_pos = prog->code_base + NVC0_SHADER_HEADER_SIZE;
 
    if (prog->relocs)
       nv50_ir_relocate_code(prog->relocs, prog->code, code_pos, lib_pos, 0);
@@ -581,16 +584,15 @@ nvc0_program_upload_code(struct nvc0_context *nvc0, struct nvc0_program *prog)
    nvc0_program_dump(prog);
 #endif
 
-   nvc0_m2mf_push_linear(&nvc0->base, screen->text,
-                         prog->code_base,
+   nvc0_m2mf_push_linear(&nvc0->base, screen->text, prog->code_base,
                          NOUVEAU_BO_VRAM, NVC0_SHADER_HEADER_SIZE, prog->hdr);
    nvc0_m2mf_push_linear(&nvc0->base, screen->text,
                          prog->code_base + NVC0_SHADER_HEADER_SIZE,
                          NOUVEAU_BO_VRAM, prog->code_size, prog->code);
    if (prog->immd_size)
-      nvc0_m2mf_push_linear(&nvc0->base, screen->text,
-                            prog->immd_base,
-                            NOUVEAU_BO_VRAM, prog->immd_size, prog->immd_data);
+      nvc0_m2mf_push_linear(&nvc0->base,
+                            screen->text, prog->immd_base, NOUVEAU_BO_VRAM,
+                            prog->immd_size, prog->immd_data);
 
    BEGIN_RING(screen->base.channel, RING_3D(MEM_BARRIER), 1);
    OUT_RING  (screen->base.channel, 0x1111);
