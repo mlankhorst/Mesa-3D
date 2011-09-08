@@ -404,7 +404,8 @@ BuildUtil::DataArray::~DataArray()
 }
 
 void
-BuildUtil::DataArray::setup(uint32_t base, int len, int v, int size, DataFile f)
+BuildUtil::DataArray::setup(uint32_t base, int len, int v, int size,
+                            DataFile f, int8_t fileIndex)
 {
    baseAddr = base;
    arrayLen = len;
@@ -420,7 +421,7 @@ BuildUtil::DataArray::setup(uint32_t base, int len, int v, int size, DataFile f)
       memset(values, 0, arrayLen * vecDim * sizeof(Value *));
 
    if (!regOnly) {
-      baseSym = new_Symbol(up->getProgram(), file, 0);
+      baseSym = new_Symbol(up->getProgram(), file, fileIndex);
       baseSym->setOffset(baseAddr);
       baseSym->reg.size = size;
    }

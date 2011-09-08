@@ -298,9 +298,9 @@ Function::convertToSSA()
 
    // for each variable
    for (var = 0; var < allLValues.getSize(); ++var) {
-      if (!allLValues[var])
+      if (!allLValues.get(var))
          continue;
-      lval = reinterpret_cast<Value *>(allLValues[var])->asLValue();
+      lval = reinterpret_cast<Value *>(allLValues.get(var))->asLValue();
       if (!lval || !lval->defs)
          continue;
       ++iterCount;

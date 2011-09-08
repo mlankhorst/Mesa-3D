@@ -123,6 +123,9 @@ public:
    virtual bool mayPredicate(const Instruction *,
                              const Value *) const = 0;
 
+   virtual int getLatency(const Instruction *) const { return 1; }
+   virtual int getThroughput(const Instruction *) const { return 1; }
+
    virtual unsigned int getFileSize(DataFile) const = 0;
    virtual unsigned int getFileUnit(DataFile) const = 0;
 

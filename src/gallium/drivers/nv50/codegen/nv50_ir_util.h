@@ -261,65 +261,95 @@ private:
    Item *array;
 };
 
+class DynArray
+{
+public:
+   class Item
+   {
+   public:
+      union {
+         uint32_t u32;
+         void *p;
+      };
+   };
+
+   DynArray() : data(NULL), size(0) { }
+
+   ~DynArray() { if (data) FREE(data); }
+
+   inline Item& operator[](unsigned int i)
+   {
+      if (i >= size)
+         resize(i);
+      return data[i];
+   }
+
+   inline const Item operator[](unsigned int i) const
+   {
+      return data[i];
+   }
+
+   void resize(unsigned int index)
+   {
+      const unsigned int oldSize = size * sizeof(Item);
+
+      if (!size)
+         size = 8;
+      while (size <= index)
+         size <<= 1;
+
+      data = (Item *)REALLOC(data, oldSize, size * sizeof(Item));
+   }
+
+private:
+   Item *data;
+   unsigned int size;
+};
+
 class ArrayList
 {
 public:
-   ArrayList();
-   ~ArrayList();
-
-   inline void reserve(int count)
-   {
-      if (count > limit)
-         reallocate(count);
-   }
+   ArrayList() : size(0) { }
 
    void insert(void *item, int& id)
    {
       id = ids.getSize() ? ids.pop().u.i : size++;
-
-      assert(MAX2(limit + limit, 4) > size);
-      if (size > limit)
-         reallocate(MAX2(4, limit + limit));
-
-      array[id] = item;
+      data[id].p = item;
    }
 
-   inline void remove(int& id)
+   void remove(int& id)
    {
-      assert(id < size && array[id]);
-
-      ids.push(id);
-      array[id] = 0;
-      id = 0;
+      const unsigned int uid = id;
+      assert(uid < size && data[id].p);
+      ids.push(uid);
+      data[uid].p = NULL;
+      id = -1;
    }
 
    inline int getSize() { return size; }
 
-   inline void *get(int id) { assert(id >= 0 && id < size); return array[id]; }
-
-   inline void *operator[](int id) { return get(id); }
+   inline void *get(unsigned int id) { assert(id < size); return data[id].p; }
 
    class Iterator : public nv50_ir::Iterator
    {
    public:
-      Iterator(ArrayList *array) : pos(0)
+      Iterator(ArrayList *array) : pos(0), data(array->data)
       {
          size = array->getSize();
-         data = array->array;
-         if (data)
+         if (size)
             nextValid();
       }
 
-      void nextValid() { while ((pos < size) && !data[pos]) ++pos; }
+      void nextValid() { while ((pos < size) && !data[pos].p) ++pos; }
 
       void next() { if (pos < size) { ++pos; nextValid(); } }
-      void *get() const { assert(pos < size); return data[pos]; }
+      void *get() const { assert(pos < size); return data[pos].p; }
       bool end() const { return pos >= size; }
 
    private:
-      int pos;
-      int size;
-      void **data;
+      unsigned int pos;
+      unsigned int size;
+      DynArray& data;
 
       friend class ArrayList;
    };
@@ -327,12 +357,9 @@ public:
    Iterator iterator() { return Iterator(this); }
 
 private:
-   void reallocate(int capacity);
-
-   int size;
-   int limit;
+   DynArray data;
    Stack ids;
-   void **array;
+   unsigned int size;
 };
 
 class Interval

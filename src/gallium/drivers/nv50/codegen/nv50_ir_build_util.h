@@ -81,7 +81,8 @@ public:
 
       inline void setParent(BuildUtil *bld) { assert(!up); up = bld; }
 
-      void setup(uint32_t base, int len, int vec, int size, DataFile);
+      void setup(uint32_t base, int len, int vecDim, int size,
+                 DataFile, int8_t fileIndex = 0);
 
       inline bool exists(unsigned int i, unsigned int c);
 

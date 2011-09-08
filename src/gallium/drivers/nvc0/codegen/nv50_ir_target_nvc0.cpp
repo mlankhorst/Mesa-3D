@@ -476,4 +476,84 @@ TargetNVC0::isSatSupported(const Instruction *insn) const
    return insn->dType == TYPE_F32;
 }
 
+// TODO: better values
+int TargetNVC0::getLatency(const Instruction *i) const
+{
+   if (i->op == OP_LOAD) {
+      if (i->cache == CACHE_CV)
+         return 700;
+      return 48;
+   }
+   return 24;
+}
+
+// These are "inverse" throughput values, i.e. the number of cycles required
+// to issue a specific instruction for a full warp (32 threads).
+//
+// Assuming we have more than 1 warp in flight, a higher issue latency results
+// in a lower result latency since the MP will have spent more time with other
+// warps.
+// This also helps to determine the number of cycles between instructions in
+// a single warp.
+//
+int TargetNVC0::getThroughput(const Instruction *i) const
+{
+   // TODO: better values
+   if (i->dType == TYPE_F32) {
+      switch (i->op) {
+      case OP_ADD:
+      case OP_MUL:
+      case OP_MAD:
+      case OP_FMA:
+         return 1;
+      case OP_CVT:
+      case OP_CEIL:
+      case OP_FLOOR:
+      case OP_TRUNC:
+      case OP_SET:
+      case OP_SLCT:
+      case OP_MIN:
+      case OP_MAX:
+         return 2;
+      case OP_RCP:
+      case OP_RSQ:
+      case OP_LG2:
+      case OP_SIN:
+      case OP_COS:
+      case OP_PRESIN:
+      case OP_PREEX2:
+      default:
+         return 8;
+      }
+   } else
+   if (i->dType == TYPE_U32 || i->dType == TYPE_S32) {
+      switch (i->op) {
+      case OP_ADD:
+      case OP_AND:
+      case OP_OR:
+      case OP_XOR:
+      case OP_NOT:
+         return 1;
+      case OP_MUL:
+      case OP_MAD:
+      case OP_CVT:
+      case OP_SET:
+      case OP_SLCT:
+      case OP_SHL:
+      case OP_SHR:
+      case OP_NEG:
+      case OP_ABS:
+      case OP_MIN:
+      case OP_MAX:
+      default:
+         return 2;
+      }
+   } else
+   if (i->dType == TYPE_F64) {
+      return 2;
+   } else {
+      return 1;
+   }
+}
+
 } // namespace nv50_ir

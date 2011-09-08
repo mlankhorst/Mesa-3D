@@ -28,6 +28,9 @@ public:
    virtual bool isSatSupported(const Instruction *) const;
    virtual bool mayPredicate(const Instruction *, const Value *) const;
 
+   virtual int getLatency(const Instruction *) const;
+   virtual int getThroughput(const Instruction *) const;
+
    virtual unsigned int getFileSize(DataFile) const;
    virtual unsigned int getFileUnit(DataFile) const;
 

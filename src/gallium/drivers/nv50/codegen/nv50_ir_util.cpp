@@ -67,32 +67,6 @@ Stack::moveTo(Stack& that)
    this->size = 0;
 }
 
-ArrayList::ArrayList()
-{
-   array = NULL;
-   size = 0;
-   limit = 0;
-}
-
-ArrayList::~ArrayList()
-{
-   if (array)
-      FREE(array);
-}
-
-void
-ArrayList::reallocate(int capacity)
-{
-   unsigned int oldSize = sizeof(void *) * limit;
-   unsigned int newSize = sizeof(void *) * capacity;
-
-   array = (void **)REALLOC(array, oldSize, newSize);
-
-   memset(&array[limit], 0, newSize - oldSize);
-
-   limit = capacity;
-}
-
 Interval::~Interval()
 {
    clear();
