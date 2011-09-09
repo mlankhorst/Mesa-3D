@@ -195,6 +195,9 @@ private:
 
    void unary(Instruction *, const ImmediateValue&);
 
+   // TGSI 'true' is converted to -1 by F2I(NEG(SET)), track back to SET
+   CmpInstruction *findOriginForTestWithZero(Value *);
+
    unsigned int foldCount;
 
    BuildUtil bld;
@@ -236,6 +239,34 @@ ConstantFolding::visit(BasicBlock *bb)
          opnd(i, src1, 1);
    }
    return true;
+}
+
+CmpInstruction *
+ConstantFolding::findOriginForTestWithZero(Value *value)
+{
+   if (!value)
+      return NULL;
+   Instruction *insn = value->getInsn();
+
+   while (insn && insn->op != OP_SET) {
+      Instruction *next = NULL;
+      switch (insn->op) {
+      case OP_NEG:
+      case OP_ABS:
+      case OP_CVT:
+         next = insn->getSrc(0)->getInsn();
+         if (insn->sType != next->dType)
+            return NULL;
+         break;
+      case OP_MOV:
+         next = insn->getSrc(0)->getInsn();
+         break;
+      default:
+         return NULL;
+      }
+      insn = next;
+   }
+   return insn ? insn->asCmp() : NULL;
 }
 
 void
@@ -648,7 +679,7 @@ ConstantFolding::opnd(Instruction *i, ImmediateValue *src, int s)
 
    case OP_SET:
    {
-      CmpInstruction *si = i->getSrc(t)->getInsn()->asCmp();
+      CmpInstruction *si = findOriginForTestWithZero(i->getSrc(t));
       CondCode cc, ccZ;
       if (imm.reg.data.u32 != 0 || !si || si->op != OP_SET)
          return;
@@ -744,6 +775,8 @@ ModifierFolding::visit(BasicBlock *bb)
          mi = i->getSrc(s)->getInsn();
          if (!mi ||
              mi->predSrc >= 0 || mi->getDef(0)->refCount() > 8)
+            continue;
+         if (i->sType != mi->dType)
             continue;
          if ((mod = Modifier(mi->op)) == Modifier(0))
             continue;
@@ -1367,7 +1400,12 @@ MemoryOpt::purgeRecords(Instruction *const st, DataFile f)
 bool
 MemoryOpt::visit(BasicBlock *bb)
 {
-   return runOpt(bb);
+   bool ret = runOpt(bb);
+   // Run again, one pass won't combine 4 32 bit ld/st to a single 128 bit ld/st
+   // where 96 bit memory operations are forbidden.
+   if (ret)
+      ret = runOpt(bb);
+   return ret;
 }
 
 bool

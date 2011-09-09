@@ -1108,7 +1108,7 @@ Value *
 Converter::applySrcMod(Value *val, int s, int c)
 {
    Modifier m = tgsi.getSrc(s).getMod(c);
-   DataType ty = tgsi.inferDstType();
+   DataType ty = tgsi.inferSrcType();
 
    if (m & Modifier(NV50_IR_MOD_ABS))
       val = mkOp1v(OP_ABS, ty, getScratch(), val);
