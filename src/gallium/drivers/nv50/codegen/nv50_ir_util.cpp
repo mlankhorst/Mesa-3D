@@ -128,8 +128,8 @@ Interval::extend(int a, int b)
 
 bool Interval::contains(int pos)
 {
-   for (Range *r = head; r; r = r->next)
-      if (pos >= r->bgn && r->end <= pos)
+   for (Range *r = head; r && r->bgn <= pos; r = r->next)
+      if (r->end > pos)
          return true;
    return false;
 }
