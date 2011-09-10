@@ -4,7 +4,7 @@
 
 #include "pipe/p_state.h"
 
-#define NVC0_CAP_MAX_PROGRAM_TEMPS 64
+#define NVC0_CAP_MAX_PROGRAM_TEMPS 128
 
 #define NVC0_SHADER_HEADER_SIZE (20 * 4)
 
