@@ -1646,6 +1646,9 @@ FlatteningPass::isConstantCondition(Value *pred)
          file = ld->src[0].getFile();
       } else {
          file = insn->src[s].getFile();
+         // catch $r63 on NVC0
+         if (file == FILE_GPR && insn->getSrc(s)->reg.data.id > prog->maxGPR)
+            file = FILE_IMMEDIATE;
       }
       if (file != FILE_IMMEDIATE && file != FILE_MEMORY_CONST)
          return false;
