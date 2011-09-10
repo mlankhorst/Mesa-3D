@@ -828,6 +828,16 @@ CmpInstruction::CmpInstruction(Function *fn, operation op)
    setCond = CC_ALWAYS;
 }
 
+Instruction *
+CmpInstruction::clone(bool deep) const
+{
+   CmpInstruction *cmp = new_CmpInstruction(bb->getFunction(), op);
+   cloneBase(cmp, deep);
+   cmp->setCond = setCond;
+   cmp->dType = dType;
+   return cmp;
+}
+
 FlowInstruction::FlowInstruction(Function *fn, operation op,
                                  BasicBlock *targ)
    : Instruction(fn, op, TYPE_NONE)

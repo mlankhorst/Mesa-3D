@@ -800,6 +800,8 @@ class CmpInstruction : public Instruction
 public:
    CmpInstruction(Function *, operation);
 
+   virtual Instruction *clone(bool deep) const;
+
    void setCondition(CondCode cond) { setCond = cond; }
    CondCode getCondition() const { return setCond; }
 
@@ -837,8 +839,8 @@ public:
    inline unsigned int getInsnCount() const { return numInsns; }
    inline bool isTerminated() const { return exit && exit->terminator; }
 
+   bool dominatedBy(BasicBlock *bb);
    inline bool reachableBy(BasicBlock *by, BasicBlock *term);
-   inline bool dominatedBy(BasicBlock *bb);
 
    // returns mask of conditional out blocks
    // e.g. 3 for IF { .. } ELSE { .. } ENDIF, 1 for IF { .. } ENDIF

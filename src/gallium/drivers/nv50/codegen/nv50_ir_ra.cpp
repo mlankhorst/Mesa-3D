@@ -793,7 +793,7 @@ RegAlloc::InsertConstraintsPass::exec(Function *ir)
 {
    constrList.clear();
 
-   bool ret = run(ir, false, true);
+   bool ret = run(ir, true, true);
    if (ret)
       ret = insertConstraintMoves();
    return ret;
@@ -855,8 +855,24 @@ RegAlloc::InsertConstraintsPass::detectConflict(Instruction *cst, int s)
 void
 RegAlloc::InsertConstraintsPass::addConstraint(Instruction *i, int s, int n)
 {
-   Instruction *cst = new_Instruction(func, OP_CONSTRAINT, i->dType);
+   Instruction *cst;
    int d;
+
+   // first, look for an existing identical constraint op
+   for (DLList::Iterator it = constrList.iterator(); !it.end(); it.next()) {
+      cst = reinterpret_cast<Instruction *>(it.get());
+      if (!i->bb->dominatedBy(cst->bb))
+         break;
+      for (d = 0; d < n; ++d)
+         if (cst->getSrc(d) != i->getSrc(d + s))
+            break;
+      if (d >= n) {
+         for (d = 0; d < n; ++d, ++s)
+            i->setSrc(s, cst->getDef(d));
+         return;
+      }
+   }
+   cst = new_Instruction(func, OP_CONSTRAINT, i->dType);
 
    for (d = 0; d < n; ++s, ++d) {
       cst->setDef(d, new_LValue(func, FILE_GPR));

@@ -677,13 +677,13 @@ ConstantFolding::opnd(Instruction *i, ImmediateValue *src, int s)
       }
       break;
 
-   case OP_SET:
+   case OP_SET: // TODO: SET_AND,OR,XOR
    {
       CmpInstruction *si = findOriginForTestWithZero(i->getSrc(t));
       CondCode cc, ccZ;
-      if (imm.reg.data.u32 != 0 || !si || si->op != OP_SET)
-         return;
       if (i->src[t].mod != Modifier(0))
+         return;
+      if (imm.reg.data.u32 != 0 || !si || si->op != OP_SET)
          return;
       cc = si->setCond;
       ccZ = (CondCode)((unsigned int)i->asCmp()->setCond & ~CC_U);
@@ -776,8 +776,16 @@ ModifierFolding::visit(BasicBlock *bb)
          if (!mi ||
              mi->predSrc >= 0 || mi->getDef(0)->refCount() > 8)
             continue;
-         if (i->sType != mi->dType)
+         if (i->sType == TYPE_U32 && mi->dType == TYPE_S32) {
+            if ((i->op != OP_ADD &&
+                 i->op != OP_MUL) ||
+                (mi->op != OP_ABS &&
+                 mi->op != OP_NEG))
+               continue;
+         } else
+         if (i->sType != mi->dType) {
             continue;
+         }
          if ((mod = Modifier(mi->op)) == Modifier(0))
             continue;
          mod = mod * mi->src[0].mod;
@@ -833,6 +841,8 @@ private:
    void handleMINMAX(Instruction *);
    void handleRCP(Instruction *);
    void handleSLCT(Instruction *);
+   void handleLOGOP(Instruction *);
+   void handleCVT(Instruction *);
 };
 
 void
@@ -939,10 +949,104 @@ AlgebraicOpt::handleSLCT(Instruction *slct)
    slct->setSrc(2, NULL);
 }
 
+void
+AlgebraicOpt::handleLOGOP(Instruction *logop)
+{
+   Value *src0 = logop->getSrc(0);
+   Value *src1 = logop->getSrc(1);
+
+   if (src0->reg.file != FILE_GPR || src1->reg.file != FILE_GPR)
+      return;
+
+   if (src0 == src1) {
+      if (logop->src[0].mod != Modifier(0) ||
+          logop->src[1].mod != Modifier(0))
+         return;
+      if (logop->op == OP_AND || logop->op == OP_OR) {
+         logop->def[0].replace(logop->getSrc(0), false);
+         delete_Instruction(prog, logop);
+      }
+   } else {
+      // try AND(SET, SET) -> SET_AND(SET)
+      Instruction *set0 = src0->getInsn();
+      Instruction *set1 = src1->getInsn();
+
+      if (!set0 || set0->fixed || !set1 || set1->fixed)
+         return;
+      if (set1->op != OP_SET) {
+         Instruction *xchg = set0;
+         set0 = set1;
+         set1 = xchg;
+         if (set1->op != OP_SET)
+            return;
+      }
+      if (set0->op != OP_SET &&
+          set0->op != OP_SET_AND &&
+          set0->op != OP_SET_OR &&
+          set0->op != OP_SET_XOR)
+         return;
+      if (set0->getDef(0)->refCount() > 1 &&
+          set1->getDef(0)->refCount() > 1)
+         return;
+      if (set0->getPredicate() || set1->getPredicate())
+         return;
+      // check that they don't source each other
+      for (int s = 0; s < 2; ++s)
+         if (set0->getSrc(s) == set1->getDef(0) ||
+             set1->getSrc(s) == set0->getDef(0))
+            return;
+
+      set0 = set0->clone(true);
+      set1 = set1->clone(false);
+      logop->bb->insertAfter(logop, set1);
+      logop->bb->insertAfter(logop, set0);
+
+      set0->dType = TYPE_U8;
+      set0->getDef(0)->reg.file = FILE_PREDICATE;
+      set0->getDef(0)->reg.size = 1;
+      set1->setSrc(2, set0->getDef(0));
+      switch (logop->op) {
+      case OP_AND: set1->op = OP_SET_AND; break;
+      case OP_OR:  set1->op = OP_SET_OR; break;
+      case OP_XOR: set1->op = OP_SET_XOR; break;
+      default:
+         assert(0);
+         break;
+      }
+      set1->setDef(0, logop->getDef(0));
+      delete_Instruction(prog, logop);
+   }
+}
+
+// F2I(NEG(SET with result 1.0f/0.0f)) -> SET with result -1/0
+void
+AlgebraicOpt::handleCVT(Instruction *cvt)
+{
+   if (cvt->sType != TYPE_F32 ||
+       cvt->dType != TYPE_S32 || cvt->src[0].mod != Modifier(0))
+      return;
+   Instruction *insn = cvt->getSrc(0)->getInsn();
+   if (!insn || insn->op != OP_NEG || insn->dType != TYPE_F32)
+      return;
+   if (insn->src[0].mod != Modifier(0))
+      return;
+   insn = insn->getSrc(0)->getInsn();
+   if (!insn || insn->op != OP_SET || insn->dType != TYPE_F32)
+      return;
+
+   Instruction *bset = insn->clone(false);
+   bset->dType = TYPE_U32;
+   bset->setDef(0, cvt->getDef(0));
+   cvt->bb->insertAfter(cvt, bset);
+   delete_Instruction(prog, cvt);
+}
+
 bool
 AlgebraicOpt::visit(BasicBlock *bb)
 {
-   for (Instruction *i = bb->getEntry(); i; i = i->next) {
+   Instruction *next;
+   for (Instruction *i = bb->getEntry(); i; i = next) {
+      next = i->next;
       switch (i->op) {
       case OP_ADD:
          handleADD(i);
@@ -956,6 +1060,14 @@ AlgebraicOpt::visit(BasicBlock *bb)
          break;
       case OP_SLCT:
          handleSLCT(i);
+         break;
+      case OP_AND:
+      case OP_OR:
+      case OP_XOR:
+         handleLOGOP(i);
+         break;
+      case OP_CVT:
+         handleCVT(i);
          break;
       default:
          break;
@@ -1229,8 +1341,9 @@ MemoryOpt::findRecord(const Instruction *insn, bool load, bool& isAdj) const
    Record *it = load ? loads[sym->reg.file] : stores[sym->reg.file];
 
    for (; it; it = it->next) {
-      if (it->locked ||
-          (it->offset >> 4) != (sym->reg.data.offset >> 4) ||
+      if (it->locked && insn->op != OP_LOAD)
+         continue;
+      if ((it->offset >> 4) != (sym->reg.data.offset >> 4) ||
           it->rel[0] != insn->getIndirect(0, 0) ||
           it->fileIndex != sym->reg.fileIndex ||
           it->rel[1] != insn->getIndirect(0, 1))
@@ -1321,14 +1434,23 @@ MemoryOpt::replaceStFromSt(Instruction *restrict st, Record *rec)
    st->takeExtraSources(0, extra);
 
    if (offR < offS) {
-      Value *save[4];
-      int s, j;
-      for (j = 0, s = 1; st->srcExists(s); ++s)
-         save[j++] = st->getSrc(s);
+      Value *vals[4];
+      int s, n;
+      int k = 0;
+      // get non-replaced sources of ri
       for (s = 1; offR < offS; offR += ri->getSrc(s)->reg.size, ++s)
-         st->setSrc(s, ri->getSrc(s));
-      for (int k = s; k < s + j; ++k)
-         st->setSrc(k, save[k - s]);
+         vals[k++] = ri->getSrc(s);
+      n = s;
+      // get replaced sources of st
+      for (s = 1; st->srcExists(s); offS += st->getSrc(s)->reg.size, ++s)
+         vals[k++] = st->getSrc(s);
+      // skip replaced sources of ri
+      for (s = n; offR < endS; offR += ri->getSrc(s)->reg.size, ++s);
+      // get non-replaced sources after values covered by st
+      for (; offR < endR; offR += ri->getSrc(s)->reg.size, ++s)
+         vals[k++] = ri->getSrc(s);
+      for (s = 0; s < k; ++s)
+         st->setSrc(s + 1, vals[s]);
       st->setSrc(0, ri->getSrc(0));
    } else
    if (endR > endS) {
@@ -1359,7 +1481,7 @@ MemoryOpt::Record::overlaps(const Instruction *ldst) const
    if (this->fileIndex != that.fileIndex)
       return false;
 
-   if (this->rel || that.rel)
+   if (this->rel[0] || that.rel[0])
       return this->base == that.base;
    return
       (this->offset < that.offset + that.size) &&

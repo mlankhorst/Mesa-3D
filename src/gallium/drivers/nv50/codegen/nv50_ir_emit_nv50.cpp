@@ -741,6 +741,7 @@ CodeEmitterNV50::emitUADD(const Instruction *i)
    } else {
       emitForm_MUL(i);
    }
+   assert(!(i->src[0].mod.neg() && i->src[1].mod.neg()));
    code[0] |= i->src[0].mod.neg() << 28;
    code[0] |= i->src[1].mod.neg() << 22;
 }
