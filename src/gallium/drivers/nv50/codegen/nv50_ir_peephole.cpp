@@ -1543,8 +1543,8 @@ MemoryOpt::runOpt(BasicBlock *bb)
       next = ldst->next;
 
       if (ldst->op == OP_LOAD || ldst->op == OP_VFETCH) {
-         if (ldst->getDef(0)->refCount() == 0) {
-            // dead load, might have been produced by constant folding
+         if (ldst->isDead()) {
+            // might have been produced by earlier optimization
             bb->remove(ldst);
             continue;
          }
@@ -1997,6 +1997,11 @@ LocalCSE::visit(BasicBlock *bb)
 
       replaced = 0;
 
+      // will need to know the order of instructions
+      int serial = 0;
+      for (ir = bb->getEntry(); ir; ir = ir->next)
+         ir->serial = serial++;
+
       for (ir = bb->getEntry(); ir; ir = next) {
          int s;
          Value *src = NULL;
@@ -2017,7 +2022,7 @@ LocalCSE::visit(BasicBlock *bb)
             for (ValueRef::Iterator refs = src->uses->iterator(); !refs.end();
                  refs.next()) {
                Instruction *ik = refs.get()->getInsn();
-               if (ik != ir && ik->bb == ir->bb)
+               if (ik->serial < ir->serial && ik->bb == ir->bb)
                   if (tryReplace(&ir, ik))
                      break;
             }
