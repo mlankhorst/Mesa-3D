@@ -3,6 +3,8 @@
 TOP = ../../../..
 include $(TOP)/configs/current
 
+LINKER = $(CC)
+
 PIPE_PREFIX := pipe_
 
 GBM_BACKEND = gbm_gallium_drm
@@ -118,6 +120,7 @@ pipe_SOURCES += pipe_i965.c
 endif
 
 ifneq ($(findstring nouveau/drm,$(GALLIUM_WINSYS_DIRS)),)
+LINKER = $(CXX)
 pipe_TARGETS += $(PIPE_PREFIX)nouveau.so
 pipe_SOURCES += pipe_nouveau.c
 endif
@@ -155,7 +158,7 @@ $(GBM_EXTRA_TARGETS): $(TOP)/$(LIB_DIR)/gbm/%: %
 	$(INSTALL) $< $(dir $@)
 
 $(pipe_TARGETS): $(PIPE_PREFIX)%.so: pipe_%.o $(pipe_LIBS) $($*_LIBS)
-	$(MKLIB) -o $@ -noprefix -linker '$(CC)' \
+	$(MKLIB) -o $@ -noprefix -linker '$(LINKER)' \
 		-ldflags '-L$(TOP)/$(LIB_DIR) $(pipe_LDFLAGS) $(LDFLAGS)' \
 		$(MKLIB_OPTIONS) $< \
 		-Wl,--start-group $(pipe_LIBS) $($*_LIBS) -Wl,--end-group \
