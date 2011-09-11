@@ -472,8 +472,8 @@ RegAlloc::coalesceValues(unsigned int mask)
       case OP_PHI:
          if (!(mask & JOIN_MASK_PHI))
             break;
-         for (c = 0; c < NV50_IR_MAX_SRCS && insn->src[c].exists(); ++c)
-            if (!insn->def[0].get()->coalesce(insn->src[c].get(), false)) {
+         for (c = 0; insn->srcExists(c); ++c)
+            if (!insn->getDef(0)->coalesce(insn->getSrc(c), false)) {
                ERROR("failed to coalesce phi operands\n");
                return false;
             }
@@ -481,21 +481,21 @@ RegAlloc::coalesceValues(unsigned int mask)
       case OP_UNION:
          if (!(mask & JOIN_MASK_UNION))
             break;
-         for (c = 0; c < NV50_IR_MAX_SRCS && insn->src[c].exists(); ++c)
-            insn->def[0].get()->coalesce(insn->src[c].get(), true);
+         for (c = 0; insn->srcExists(c); ++c)
+            insn->getDef(0)->coalesce(insn->getSrc(c), true);
          break;
       case OP_CONSTRAINT:
          if (!(mask & JOIN_MASK_CONSTRAINT))
             break;
-         for (c = 0; c < 4 && insn->src[c].exists(); ++c)
-            insn->def[c].get()->coalesce(insn->src[c].get(), true);
+         for (c = 0; c < 4 && insn->srcExists(c); ++c)
+            insn->getDef(c)->coalesce(insn->getSrc(c), true);
          break;
       case OP_MOV:
          if (!(mask & JOIN_MASK_MOV))
             break;
-         i = insn->src[0].get()->getUniqueInsn();
+         i = insn->getSrc(0)->getUniqueInsn();
          if (i && !i->constrainedDefs())
-            insn->def[0].get()->coalesce(insn->src[0].get(), false);
+            insn->getDef(0)->coalesce(insn->getSrc(0), false);
          break;
       case OP_TEX:
       case OP_TXB:
@@ -507,8 +507,8 @@ RegAlloc::coalesceValues(unsigned int mask)
       case OP_TEXCSAA:
          if (!(mask & JOIN_MASK_TEX))
             break;
-         for (c = 0; c < 4 && insn->src[c].exists(); ++c)
-            insn->def[c].get()->coalesce(insn->src[c].get(), true);
+         for (c = 0; c < 4 && insn->srcExists(c); ++c)
+            insn->getDef(c)->coalesce(insn->getSrc(c), true);
          break;
       default:
          break;
@@ -553,7 +553,7 @@ RegAlloc::collectLValues(DLList &list, bool assignedOnly)
    for (int n = 0; n < insns.getSize(); ++n) {
       Instruction *i = insnBySerial(n);
 
-      for (int d = 0; d < NV50_IR_MAX_DEFS && i->def[d].exists(); ++d)
+      for (int d = 0; i->defExists(d); ++d)
          if (!i->getDef(d)->livei.isEmpty())
             if (!assignedOnly || i->getDef(d)->reg.data.id >= 0)
                insertOrderedTail(list, i->getDef(d));

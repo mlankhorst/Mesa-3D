@@ -181,12 +181,13 @@ Value::coalesce(Value *jval, bool force)
       ERROR("forced coalescing of values of different sizes/files");
    }
 
-   if (!force && (this->join->reg.data.id != jval->join->reg.data.id)) {
-      if (this->join->reg.data.id >= 0 &&
-          jval->join->reg.data.id >= 0)
+   if (!force && (repr->reg.data.id != jrep->reg.data.id)) {
+      if (repr->reg.data.id >= 0 &&
+          jrep->reg.data.id >= 0)
             return false;
-      if (jval->join->reg.data.id >= 0) {
+      if (jrep->reg.data.id >= 0) {
          repr = jval->join;
+         jrep = this->join;
          jval = this;
       }
 
@@ -199,7 +200,7 @@ Value::coalesce(Value *jval, bool force)
          Value *fixed = reinterpret_cast<Value *>(iter.get());
          assert(fixed);
          if (fixed->reg.data.id == repr->reg.data.id)
-            if (fixed->livei.overlaps(repr->livei))
+            if (fixed->livei.overlaps(jrep->livei))
                return false;
       }
    }
