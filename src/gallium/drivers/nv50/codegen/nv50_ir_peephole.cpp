@@ -1840,6 +1840,8 @@ class LocalCSE : public Pass
 private:
    virtual bool visit(BasicBlock *);
 
+   inline bool tryReplace(Instruction **, Instruction *);
+
    DLList ops[OP_LAST + 1];
 };
 
@@ -1973,9 +1975,22 @@ GlobalCSE::visit(BasicBlock *bb)
 }
 
 bool
+LocalCSE::tryReplace(Instruction **ptr, Instruction *i)
+{
+   Instruction *old = *ptr;
+   if (!old->isResultEqual(i))
+      return false;
+   for (int d = 0; old->defExists(d); ++d)
+      old->def[d].replace(i->getDef(d), false);
+   delete_Instruction(prog, old);
+   *ptr = NULL;
+   return true;
+}
+
+bool
 LocalCSE::visit(BasicBlock *bb)
 {
-   unsigned int i, d, replaced;
+   unsigned int replaced;
 
    do {
       Instruction *ir, *next;
@@ -1983,6 +1998,9 @@ LocalCSE::visit(BasicBlock *bb)
       replaced = 0;
 
       for (ir = bb->getEntry(); ir; ir = next) {
+         int s;
+         Value *src = NULL;
+
          next = ir->next;
 
          if (ir->fixed) {
@@ -1990,23 +2008,34 @@ LocalCSE::visit(BasicBlock *bb)
             continue;
          }
 
-         DLLIST_FOR_EACH(&ops[ir->op], iter)
-         {
-            Instruction *ik = reinterpret_cast<Instruction *>(iter.get());
+         for (s = 0; ir->srcExists(s); ++s)
+            if (ir->getSrc(s)->asLValue())
+               if (!src || ir->getSrc(s)->refCount() < src->refCount())
+                  src = ir->getSrc(s);
 
-            if (ir->isResultEqual(ik)) {
-               for (d = 0; ir->defExists(d); ++d)
-                  ir->def[d].replace(ik->getDef(d), false);
-               delete_Instruction(prog, ir);
-               ir = NULL;
-               ++replaced;
-               break;
+         if (src) {
+            for (ValueRef::Iterator refs = src->uses->iterator(); !refs.end();
+                 refs.next()) {
+               Instruction *ik = refs.get()->getInsn();
+               if (ik != ir && ik->bb == ir->bb)
+                  if (tryReplace(&ir, ik))
+                     break;
+            }
+         } else {
+            DLLIST_FOR_EACH(&ops[ir->op], iter)
+            {
+               Instruction *ik = reinterpret_cast<Instruction *>(iter.get());
+               if (tryReplace(&ir, ik))
+                  break;
             }
          }
+
          if (ir)
             ops[ir->op].insert(ir);
+         else
+            ++replaced;
       }
-      for (i = 0; i <= OP_LAST; ++i)
+      for (unsigned int i = 0; i <= OP_LAST; ++i)
          ops[i].clear();
 
    } while (replaced);
