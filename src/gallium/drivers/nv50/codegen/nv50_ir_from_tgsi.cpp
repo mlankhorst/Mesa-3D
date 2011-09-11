@@ -306,19 +306,25 @@ static nv50_ir::SVSemantic translateSysVal(uint sysval)
    }
 }
 
+#define NV50_IR_TEX_TARG_CASE(a, b) \
+   case TGSI_TEXTURE_##a: return nv50_ir::TEX_TARGET_##b;
+
 static nv50_ir::TexTarget translateTexture(uint tex)
 {
    switch (tex) {
-   case TGSI_TEXTURE_1D:         return nv50_ir::TEX_TARGET_1D;
-   case TGSI_TEXTURE_2D:         return nv50_ir::TEX_TARGET_2D;
-   case TGSI_TEXTURE_3D:         return nv50_ir::TEX_TARGET_3D;
-   case TGSI_TEXTURE_CUBE:       return nv50_ir::TEX_TARGET_CUBE;
-   case TGSI_TEXTURE_RECT:       return nv50_ir::TEX_TARGET_RECT;
-   case TGSI_TEXTURE_SHADOW1D:   return nv50_ir::TEX_TARGET_1D_SHADOW;
-   case TGSI_TEXTURE_SHADOW2D:   return nv50_ir::TEX_TARGET_2D_SHADOW;
-   case TGSI_TEXTURE_SHADOWRECT: return nv50_ir::TEX_TARGET_RECT_SHADOW;
-   case TGSI_TEXTURE_1D_ARRAY:   return nv50_ir::TEX_TARGET_1D_ARRAY;
-   case TGSI_TEXTURE_2D_ARRAY:   return nv50_ir::TEX_TARGET_2D_ARRAY;
+   NV50_IR_TEX_TARG_CASE(1D, 1D);
+   NV50_IR_TEX_TARG_CASE(2D, 2D);
+   NV50_IR_TEX_TARG_CASE(3D, 3D);
+   NV50_IR_TEX_TARG_CASE(CUBE, CUBE);
+   NV50_IR_TEX_TARG_CASE(RECT, RECT);
+   NV50_IR_TEX_TARG_CASE(1D_ARRAY, 1D_ARRAY);
+   NV50_IR_TEX_TARG_CASE(2D_ARRAY, 2D_ARRAY);
+   NV50_IR_TEX_TARG_CASE(SHADOW1D, 1D_SHADOW);
+   NV50_IR_TEX_TARG_CASE(SHADOW2D, 2D_SHADOW);
+   NV50_IR_TEX_TARG_CASE(SHADOW1D_ARRAY, 1D_ARRAY_SHADOW);
+   NV50_IR_TEX_TARG_CASE(SHADOW2D_ARRAY, 2D_ARRAY_SHADOW);
+   NV50_IR_TEX_TARG_CASE(SHADOWRECT, RECT_SHADOW);
+
    case TGSI_TEXTURE_UNKNOWN:
    default:
       assert(!"invalid texture target");
@@ -345,6 +351,7 @@ nv50_ir::DataType Instruction::inferSrcType() const
    case TGSI_OPCODE_USLT:
    case TGSI_OPCODE_USNE:
    case TGSI_OPCODE_USHR:
+   case TGSI_OPCODE_UCMP:
       return nv50_ir::TYPE_U32;
    case TGSI_OPCODE_I2F:
    case TGSI_OPCODE_IDIV:
@@ -356,6 +363,7 @@ nv50_ir::DataType Instruction::inferSrcType() const
    case TGSI_OPCODE_ISLT:
    case TGSI_OPCODE_SAD: // not sure about SAD, but no one has a float version
    case TGSI_OPCODE_MOD:
+   case TGSI_OPCODE_UARL:
       return nv50_ir::TYPE_S32;
    default:
       return nv50_ir::TYPE_F32;
@@ -1691,6 +1699,10 @@ Converter::handleInstruction(const struct tgsi_full_instruction *insn)
          mkOp2(OP_SHL, TYPE_U32, dst0[c], dst0[c], mkImm(4));
       }
       break;
+   case TGSI_OPCODE_UARL:
+      FOR_EACH_DST_ENABLED_CHANNEL(0, c, tgsi)
+         mkOp2(OP_SHL, TYPE_U32, dst0[c], fetchSrc(0, c), mkImm(4));
+      break;
    case TGSI_OPCODE_EX2:
    case TGSI_OPCODE_LG2:
       val0 = mkOp1(op, TYPE_F32, getScratch(), fetchSrc(0, 0))->getDef(0);
@@ -1824,6 +1836,7 @@ Converter::handleInstruction(const struct tgsi_full_instruction *insn)
          mkOp2(OP_SUB, TYPE_F32, dst0[c], val0, val1);
       }
       break;
+   case TGSI_OPCODE_UCMP:
    case TGSI_OPCODE_CMP:
       FOR_EACH_DST_ENABLED_CHANNEL(0, c, tgsi) {
          src0 = fetchSrc(0, c);
@@ -1832,7 +1845,8 @@ Converter::handleInstruction(const struct tgsi_full_instruction *insn)
          if (src1 == src2)
             mkMov(dst0[c], src1);
          else
-            mkCmp(OP_SLCT, CC_LT, TYPE_F32, dst0[c], src1, src2, src0);
+            mkCmp(OP_SLCT, (srcTy == TYPE_F32) ? CC_LT : CC_NE,
+                  srcTy, dst0[c], src1, src2, src0);
       }
       break;
    case TGSI_OPCODE_FRC:
@@ -2095,6 +2109,7 @@ Converter::handleInstruction(const struct tgsi_full_instruction *insn)
       break;
    default:
       ERROR("unhandled TGSI opcode: %u\n", tgsi.getOpcode());
+      assert(0);
       break;
    }
 
