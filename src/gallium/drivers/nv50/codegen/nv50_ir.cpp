@@ -135,7 +135,7 @@ ValueDef::replace(Value *repVal, bool doSet)
    int n = 0;
 
    if (!refs && value->refCount())
-      OOM();
+      FATAL("memory allocation failed");
 
    for (ValueRef::Iterator iter = value->uses->iterator(); !iter.end();
         iter.next()) {
@@ -211,28 +211,12 @@ Value::coalesce(Value *jval, bool force)
       INFO("NOTE: forced coalescing with live range overlap\n");
    }
 
-   NV50_DBGMSG(PROG_RA, "coalescing %%%i <- %%%i\n", repr->id, jval->id);
-
    ValueDef::Iterator iter = jrep->defs->iterator();
    for (; !iter.end(); iter.next())
       iter.get()->get()->join = repr;
 
    repr->defs->mergeDefs(jrep->defs);
    repr->livei.unify(jrep->livei);
-
-#if NV50_DEBUG & NV50_DEBUG_PROG_RA
-   debug_printf("join(%%%i) = {", repr->id);
-   for (ValueDef::Iterator it = repr->defs->iterator(); !it.end(); it.next()) {
-      debug_printf(" %%%i", it.get()->get()->id);
-   }
-   debug_printf(" }\n");
-   if (repr->livei.isEmpty())
-      debug_printf("livei(%%%i) is empty\n", repr->id);
-   else {
-      debug_printf("livei(%%%i) = ", repr->id);
-      repr->livei.print();
-   }
-#endif
 
    assert(repr->join == repr && jval->join == repr);
    return true;
@@ -873,6 +857,8 @@ Program::Program(Type type, Target *arch)
    maxGPR = -1;
 
    main = new Function(this, "MAIN");
+
+   dbgFlags = 0;
 }
 
 Program::~Program()
@@ -950,14 +936,18 @@ nv50_ir_generate_code(struct nv50_ir_prog_info *info)
       type = nv50_ir::Program::TYPE_COMPUTE;
       break;
    }
+   INFO_DBG(info->dbgFlags, VERBOSE, "translating program of type %u\n", type);
 
-   nv50_ir::Target *targ = nv50_ir::Target::create(info->targetArch);
+   nv50_ir::Target *targ = nv50_ir::Target::create(info->target);
    if (!targ)
       return -1;
 
    nv50_ir::Program *prog = new nv50_ir::Program(type, targ);
+   if (!prog)
+      return -1;
+   prog->dbgFlags = info->dbgFlags;
 
-   switch (info->bin.sourceFmt) {
+   switch (info->bin.sourceRep) {
 #if 0
    case PIPE_IR_LLVM:
    case PIPE_IR_GLSL:
@@ -973,15 +963,21 @@ nv50_ir_generate_code(struct nv50_ir_prog_info *info)
    }
    if (ret < 0)
       goto out;
+   if (prog->dbgFlags & NV50_IR_DEBUG_VERBOSE)
+      prog->print();
 
    prog->getTarget()->runLegalizePass(prog, nv50_ir::CG_STAGE_PRE_SSA);
-   prog->print();
 
    prog->convertToSSA();
-   prog->print();
-   prog->optimizeSSA(1);
+
+   if (prog->dbgFlags & NV50_IR_DEBUG_VERBOSE)
+      prog->print();
+
+   prog->optimizeSSA(info->optLevel);
    prog->getTarget()->runLegalizePass(prog, nv50_ir::CG_STAGE_SSA);
-   prog->print();
+
+   if (prog->dbgFlags & NV50_IR_DEBUG_BASIC)
+      prog->print();
 
    if (!prog->registerAllocation()) {
       ret = -4;
@@ -989,7 +985,7 @@ nv50_ir_generate_code(struct nv50_ir_prog_info *info)
    }
    prog->getTarget()->runLegalizePass(prog, nv50_ir::CG_STAGE_POST_RA);
 
-   prog->optimizePostRA(1);
+   prog->optimizePostRA(info->optLevel);
 
    if (!prog->emitBinary(info)) {
       ret = -5;
@@ -997,7 +993,7 @@ nv50_ir_generate_code(struct nv50_ir_prog_info *info)
    }
 
 out:
-   debug_printf("IR_GENERATE_CODE: %i, cleaning up ...\n\n", ret);
+   INFO_DBG(prog->dbgFlags, VERBOSE, "nv50_ir_generate_code: ret = %i\n", ret);
 
    info->bin.maxGPR = prog->maxGPR;
    info->bin.code = prog->code;

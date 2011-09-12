@@ -83,10 +83,10 @@ RegisterSet::intersect(DataFile f, const RegisterSet *set)
 void
 RegisterSet::print() const
 {
-   debug_printf("GPR:");
+   INFO("GPR:");
    for (int i = 0; i < (last[FILE_GPR] + 31) / 32; ++i)
-      debug_printf(" %08x", bits[FILE_GPR][i]);
-   debug_printf("\n");
+      INFO(" %08x", bits[FILE_GPR][i]);
+   INFO("\n");
 }
 
 bool
@@ -353,10 +353,10 @@ RegAlloc::buildLiveSets(BasicBlock *bb)
       bb->liveSet.fill(0);
    bb->liveSet.marker = true;
 
-#if NV50_DEBUG & NV50_DEBUG_PROG_RA
-   debug_printf("BB:%i live set of out blocks:\n", bb->getId());
-   bb->liveSet.print();
-#endif
+   if (prog->dbgFlags & NV50_IR_DEBUG_REG_ALLOC) {
+      INFO("BB:%i live set of out blocks:\n", bb->getId());
+      bb->liveSet.print();
+   }
 
    // if (!bb->getEntry())
    //   return true;
@@ -371,10 +371,10 @@ RegAlloc::buildLiveSets(BasicBlock *bb)
    for (i = bb->getPhi(); i && i->op == OP_PHI; i = i->next)
       bb->liveSet.clr(i->getDef(0)->id);
 
-#if NV50_DEBUG & NV50_DEBUG_PROG_RA
-   debug_printf("BB:%i live set after propagation:\n", bb->getId());
-   bb->liveSet.print();
-#endif
+   if (prog->dbgFlags & NV50_IR_DEBUG_REG_ALLOC) {
+      INFO("BB:%i live set after propagation:\n", bb->getId());
+      bb->liveSet.print();
+   }
 
    return true;
 }
@@ -738,18 +738,6 @@ RegAlloc::execFunc()
    if (!ret)
       goto out;
 
-#if NV50_DEBUG & NV50_DEBUG_PROG_RA
-   debug_printf("printing live intervals ...\n");
-   for (ArrayList::Iterator it = func->allLValues.iterator();
-        !it.end(); it.next()) {
-      Value *lval = Value::get(it)->asLValue();
-      if (lval && !lval->livei.isEmpty()) {
-         debug_printf("livei(%%%i): ", lval->id);
-         lval->livei.print();
-      }
-   }
-#endif
-
    ret = coalesceValues(JOIN_MASK_PHI);
    if (!ret)
       goto out;
@@ -768,6 +756,11 @@ RegAlloc::execFunc()
    ret = coalesceValues(JOIN_MASK_MOV);
    if (!ret)
       goto out;
+
+   if (prog->dbgFlags & NV50_IR_DEBUG_REG_ALLOC) {
+      func->print();
+      func->printLiveIntervals();
+   }
 
    ret = allocateConstrainedValues() && linearScan();
    if (!ret)

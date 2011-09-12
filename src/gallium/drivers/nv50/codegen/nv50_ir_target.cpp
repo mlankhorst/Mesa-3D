@@ -195,7 +195,8 @@ Program::emitBinary(struct nv50_ir_prog_info *info)
 
    emit->prepareEmission(this);
 
-   this->print();
+   if (dbgFlags & NV50_IR_DEBUG_BASIC)
+      this->print();
 
    if (!binSize) {
       code = NULL;

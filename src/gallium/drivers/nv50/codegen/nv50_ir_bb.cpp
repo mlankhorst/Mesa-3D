@@ -182,8 +182,6 @@ BasicBlock::remove(Instruction *insn)
 {
    assert(insn->bb == this);
 
-   debug_printf("BB: removing "); insn->print();
-
    if (insn->prev)
       insn->prev->next = insn->next;
 

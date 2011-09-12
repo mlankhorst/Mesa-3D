@@ -570,6 +570,8 @@ public:
    int tempArrayCount;
    int immdArrayCount;
 
+   bool mainTempsInLMem;
+
    uint8_t *resourceTargets; // TGSI_TEXTURE_*
    unsigned resourceCount;
 
@@ -589,10 +591,14 @@ private:
 Source::Source(struct nv50_ir_prog_info *prog) : info(prog)
 {
    tokens = (const struct tgsi_token *)info->bin.source;
-   tgsi_dump(tokens, 0);
+
+   if (prog->dbgFlags & NV50_IR_DEBUG_BASIC)
+      tgsi_dump(tokens, 0);
 
    resourceTargets = NULL;
    subroutines = NULL;
+
+   mainTempsInLMem = FALSE;
 }
 
 Source::~Source()
@@ -630,7 +636,7 @@ bool Source::scanSource()
    subroutineCount = scan.opcode_count[TGSI_OPCODE_BGNSUB] + 1;
    subroutines = new Subroutine[subroutineCount];
 
-   info->immd.bufferSize = 0;
+   info->immd.bufSize = 0;
    tempArrayCount = 0;
    immdArrayCount = 0;
 
@@ -676,6 +682,9 @@ bool Source::scanSource()
       }
    }
    tgsi_parse_free(&parse);
+
+   if (mainTempsInLMem)
+      info->bin.tlsSpace += (scan.file_max[TGSI_FILE_TEMPORARY] + 1) * 16;
 
    return info->assignSlots(info) == 0;
 }
@@ -813,9 +822,6 @@ bool Source::scanDeclaration(const struct tgsi_full_declaration *decl)
          info->sv[i].input = inferSysValDirection(sn);
       }
       break;
-   case TGSI_FILE_TEMPORARY:
-      info->bin.tlsSize = MAX2(info->bin.tlsSize, (last + 1) * 16);
-      break;
    case TGSI_FILE_RESOURCE:
       for (i = first; i <= last; ++i)
          resourceTargets[i] = decl->Resource.Resource;
@@ -836,13 +842,13 @@ bool Source::scanDeclaration(const struct tgsi_full_declaration *decl)
       }
       immdArrays[decl->Dim.Index2D].u32 |= c;
       count = (last + 1) * c;
-      base = info->immd.bufferSize / 4;
-      info->immd.bufferSize = (info->immd.bufferSize + count * 4 + 0xf) & ~0xf;
-      info->immd.buffer = (uint32_t *)REALLOC(info->immd.buffer, base * 4,
-                                              info->immd.bufferSize);
+      base = info->immd.bufSize / 4;
+      info->immd.bufSize = (info->immd.bufSize + count * 4 + 0xf) & ~0xf;
+      info->immd.buf = (uint32_t *)REALLOC(info->immd.buf, base * 4,
+                                           info->immd.bufSize);
       // NOTE: this assumes array declarations are ordered by Dim.Index2D
       for (i = 0; i < count; ++i)
-         info->immd.buffer[base + i] = decl->ImmediateData.u[i].Uint;
+         info->immd.buf[base + i] = decl->ImmediateData.u[i].Uint;
    }
       break;
    case TGSI_FILE_TEMPORARY_ARRAY:
@@ -861,10 +867,11 @@ bool Source::scanDeclaration(const struct tgsi_full_declaration *decl)
       }
       tempArrays[decl->Dim.Index2D].u32 |= c;
       count = (last + 1) * c;
-      info->bin.tlsSize += (info->bin.tlsSize + count * 4 + 0xf) & ~0xf;
+      info->bin.tlsSpace += (info->bin.tlsSpace + count * 4 + 0xf) & ~0xf;
    }
       break;
    case TGSI_FILE_NULL:
+   case TGSI_FILE_TEMPORARY:
    case TGSI_FILE_ADDRESS:
    case TGSI_FILE_CONSTANT:
    case TGSI_FILE_IMMEDIATE:
@@ -904,7 +911,7 @@ bool Source::scanInstruction(const struct tgsi_full_instruction *inst)
       } else
       if (insn.getDst(0).getFile() == TGSI_FILE_TEMPORARY) {
          if (insn.getDst(0).isIndirect(0))
-            info->requireTLS = TRUE;
+            mainTempsInLMem = TRUE;
       }
    }
 
@@ -912,7 +919,7 @@ bool Source::scanInstruction(const struct tgsi_full_instruction *inst)
       Instruction::SrcRegister src = insn.getSrc(s);
       if (src.getFile() == TGSI_FILE_TEMPORARY)
          if (src.isIndirect(0))
-            info->requireTLS = TRUE;
+            mainTempsInLMem = TRUE;
       if (src.getFile() != TGSI_FILE_INPUT)
          continue;
       unsigned mask = insn.srcMask(s);
@@ -2173,7 +2180,7 @@ Converter::Converter(Program *ir, const tgsi::Source *src)
    prog = ir;
    info = code->info;
 
-   DataFile tFile = info->requireTLS ? FILE_MEMORY_LOCAL : FILE_GPR;
+   DataFile tFile = code->mainTempsInLMem ? FILE_MEMORY_LOCAL : FILE_GPR;
 
    tData.setup(0, code->fileSize(TGSI_FILE_TEMPORARY), 4, 4, tFile);
    pData.setup(0, code->fileSize(TGSI_FILE_PREDICATE), 4, 4, FILE_PREDICATE);

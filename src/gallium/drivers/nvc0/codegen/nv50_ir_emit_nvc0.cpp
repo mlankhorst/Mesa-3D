@@ -1448,8 +1448,6 @@ CodeEmitterNVC0::emitInstruction(Instruction *insn)
       return false;
    }
 
-   INFO("EMIT(%x): ", codeSize); insn->print();
-
    // assert that instructions with multiple defs don't corrupt registers
    for (int d = 0; insn->defExists(d); ++d)
       assert(insn->asTex() || insn->def[d].rep()->reg.data.id >= 0);

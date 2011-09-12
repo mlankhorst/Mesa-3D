@@ -541,4 +541,18 @@ Program::print()
    pass.run(this, true, false);
 }
 
+void
+Function::printLiveIntervals() const
+{
+   INFO("printing live intervals ...\n");
+
+   for (ArrayList::Iterator it = allLValues.iterator(); !it.end(); it.next()) {
+      const Value *lval = Value::get(it)->asLValue();
+      if (lval && !lval->livei.isEmpty()) {
+         INFO("livei(%%%i): ", lval->id);
+         lval->livei.print();
+      }
+   }
+}
+
 } // namespace nv50_ir

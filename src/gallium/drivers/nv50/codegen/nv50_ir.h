@@ -909,6 +909,7 @@ public:
    inline int getId() const { return id; }
 
    void print();
+   void printLiveIntervals() const;
    void printCFGraph(const char *filePath);
 
    bool setEntry(BasicBlock *);
@@ -1014,6 +1015,8 @@ public:
    MemoryPool mem_LValue;
    MemoryPool mem_Symbol;
    MemoryPool mem_ImmediateValue;
+
+   uint32_t dbgFlags;
 
    void releaseInstruction(Instruction *);
    void releaseValue(Value *);

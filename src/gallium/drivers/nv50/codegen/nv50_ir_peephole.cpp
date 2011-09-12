@@ -2158,7 +2158,8 @@ DeadCodeElim::checkSplitLoad(Instruction *ld1)
 
 #define RUN_PASS(l, n, f)                       \
    if (level >= (l)) {                          \
-      INFO("PEEPHOLE: %s\n", #n);               \
+      if (dbgFlags & NV50_IR_DEBUG_VERBOSE)     \
+         INFO("PEEPHOLE: %s\n", #n);            \
       n pass;                                   \
       if (!pass.f(this))                        \
          return false;                          \
@@ -2167,16 +2168,16 @@ DeadCodeElim::checkSplitLoad(Instruction *ld1)
 bool
 Program::optimizeSSA(int level)
 {
-   RUN_PASS(0, DeadCodeElim, buryAll);
-   RUN_PASS(0, CopyPropagation, run);
-   RUN_PASS(0, GlobalCSE, run);
-   RUN_PASS(0, LocalCSE, run);
-   RUN_PASS(1, AlgebraicOpt, run);
-   RUN_PASS(1, ModifierFolding, run); // before load propagation -> less checks
+   RUN_PASS(1, DeadCodeElim, buryAll);
+   RUN_PASS(1, CopyPropagation, run);
+   RUN_PASS(2, GlobalCSE, run);
+   RUN_PASS(1, LocalCSE, run);
+   RUN_PASS(2, AlgebraicOpt, run);
+   RUN_PASS(2, ModifierFolding, run); // before load propagation -> less checks
    RUN_PASS(1, ConstantFolding, foldAll);
    RUN_PASS(1, LoadPropagation, run);
-   RUN_PASS(1, MemoryOpt, run);
-   RUN_PASS(1, LocalCSE, run);
+   RUN_PASS(2, MemoryOpt, run);
+   RUN_PASS(2, LocalCSE, run);
    RUN_PASS(0, DeadCodeElim, buryAll);
    return true;
 }
@@ -2184,7 +2185,7 @@ Program::optimizeSSA(int level)
 bool
 Program::optimizePostRA(int level)
 {
-   RUN_PASS(1, FlatteningPass, run);
+   RUN_PASS(2, FlatteningPass, run);
    return true;
 }
 

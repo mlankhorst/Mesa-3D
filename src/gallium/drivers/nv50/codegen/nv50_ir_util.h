@@ -9,14 +9,20 @@
 #include "util/u_inlines.h"
 #include "util/u_memory.h"
 
-#define ERROR(args...) fprintf(stderr, "ERROR: " args)
-#define WARN(args...) fprintf(stderr, "WARNING: " args)
-#define INFO(args...) fprintf(stderr, args)
+#define ERROR(args...) debug_printf("ERROR: " args)
+#define WARN(args...) debug_printf("WARNING: " args)
+#define INFO(args...) debug_printf(args)
 
-#define OOM() \
-   do {                                                           \
-      fprintf(stderr, "memory allocation failed");                \
-      abort();                                                    \
+#define INFO_DBG(m, f, args...)          \
+   do {                                  \
+      if (m & NV50_IR_DEBUG_##f)         \
+         debug_printf(args);             \
+   } while(0)
+
+#define FATAL(args...)          \
+   do {                         \
+      fprintf(stderr, args);    \
+      abort();                  \
    } while(0)
 
 
@@ -326,14 +332,14 @@ public:
       id = -1;
    }
 
-   inline int getSize() { return size; }
+   inline int getSize() const { return size; }
 
    inline void *get(unsigned int id) { assert(id < size); return data[id].p; }
 
    class Iterator : public nv50_ir::Iterator
    {
    public:
-      Iterator(ArrayList *array) : pos(0), data(array->data)
+      Iterator(const ArrayList *array) : pos(0), data(array->data)
       {
          size = array->getSize();
          if (size)
@@ -349,12 +355,12 @@ public:
    private:
       unsigned int pos;
       unsigned int size;
-      DynArray& data;
+      const DynArray& data;
 
       friend class ArrayList;
    };
 
-   Iterator iterator() { return Iterator(this); }
+   Iterator iterator() const { return Iterator(this); }
 
 private:
    DynArray data;
@@ -374,7 +380,7 @@ public:
 
    inline int begin() { return head ? head->bgn : -1; }
    inline int end() { checkTail(); return tail ? tail->end : -1; }
-   inline bool isEmpty() { return !head; }
+   inline bool isEmpty() const { return !head; }
    bool overlaps(const Interval&) const;
    bool contains(int pos);
 
@@ -545,8 +551,6 @@ public:
       if (released) {
          ret = released;
          released = *(void **)released;
-         INFO("allocate(%u * %u = %u KiB): %p\n",
-              count, objSize, (count * objSize) >> 10, ret);
          return ret;
       }
 
@@ -556,8 +560,6 @@ public:
 
       ret = allocArray[count >> objStepLog2] + (count & mask) * objSize;
       ++count;
-      INFO("allocate(%u * %u = %u KiB): %p\n",
-           count, objSize, (count * objSize) >> 10, ret);
       return ret;
    }
 
