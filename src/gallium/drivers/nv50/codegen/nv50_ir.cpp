@@ -547,7 +547,7 @@ Instruction::Instruction(Function *fn, operation opr, DataType ty)
    op = opr;
    dType = sType = ty;
 
-   fn->allInsns.insert(this, id);
+   fn->add(this, id);
 }
 
 Instruction::~Instruction()

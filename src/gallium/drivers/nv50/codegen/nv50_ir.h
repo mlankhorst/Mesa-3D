@@ -138,15 +138,16 @@ enum CondCode
 {
    CC_FL = 0,
    CC_NEVER = CC_FL, // when used with FILE_FLAGS
-   CC_NOT_P = CC_FL, // when used with FILE_PREDICATE
    CC_LT = 1,
    CC_EQ = 2,
+   CC_NOT_P = CC_EQ, // when used with FILE_PREDICATE
    CC_LE = 3,
    CC_GT = 4,
    CC_NE = 5,
+   CC_P  = CC_NE,
    CC_GE = 6,
    CC_TR = 7,
-   CC_P  = CC_TR,
+   CC_ALWAYS = CC_TR,
    CC_U  = 8,
    CC_LTU = 9,
    CC_EQU = 10,
@@ -154,7 +155,6 @@ enum CondCode
    CC_GTU = 12,
    CC_NEU = 13,
    CC_GEU = 14,
-   CC_ALWAYS = 15,
    CC_NO = 0x10,
    CC_NC = 0x11,
    CC_NS = 0x12,
@@ -225,7 +225,7 @@ enum TexTarget
    TEX_TARGET_RECT_SHADOW,
    TEX_TARGET_CUBE_ARRAY_SHADOW,
    TEX_TARGET_BUFFER,
-   TEX_TARGET_LAST
+   TEX_TARGET_COUNT
 };
 
 enum SVSemantic
@@ -344,7 +344,6 @@ public:
    inline int abs() const { return (bits & NV50_IR_MOD_ABS) ? 1 : 0; }
 
    inline operator bool() { return bits ? true : false; }
-   inline operator unsigned int() { assert(0); return bits; }
 
    void applyTo(ImmediateValue &imm) const;
 
@@ -369,14 +368,12 @@ public:
    inline Value *get() const { return value; }
    inline Value *rep() const;
 
-   Instruction *getInsn() const { return insn; }
+   inline Instruction *getInsn() const { return insn; }
    inline void setInsn(Instruction *inst) { insn = inst; }
 
    inline bool isIndirect(int dim) const { return indirect[dim] >= 0; }
    inline const ValueRef *getIndirect(int dim) const;
 
-   inline Modifier getMod() { return mod; }
-   inline void setMod(Modifier m) { mod = m; }
    inline DataFile getFile() const;
    inline unsigned getSize() const;
 
@@ -731,7 +728,7 @@ public:
 
       Target& operator=(TexTarget targ)
       {
-         assert(targ < TEX_TARGET_LAST);
+         assert(targ < TEX_TARGET_COUNT);
          return *this;
       }
 
@@ -748,7 +745,7 @@ public:
          bool shadow;
       };
 
-      static const struct Desc descTable[TEX_TARGET_LAST];
+      static const struct Desc descTable[TEX_TARGET_COUNT];
 
    private:
       enum TexTarget target;
