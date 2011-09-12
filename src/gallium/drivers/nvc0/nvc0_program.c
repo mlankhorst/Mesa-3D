@@ -445,15 +445,12 @@ nvc0_fp_gen_header(struct nvc0_program *fp, struct nv50_ir_prog_info *info)
    if (fp->fp.early_z == FALSE && fp->code_size >= 0x400)
       fp->fp.early_z = !(info->prop.fp.writesDepth ||
                          info->prop.fp.usesDiscard ||
-                         info->globalStoresEnabled);
+                         (info->io.globalAccess & 2));
 
    return 0;
 }
 
-#undef  NV50_DEBUG
-#define NV50_DEBUG ~0
-
-#if NV50_DEBUG & NV50_DEBUG_SHADER
+#ifdef DEBUG
 static void
 nvc0_program_dump(struct nvc0_program *prog)
 {
@@ -484,12 +481,20 @@ nvc0_program_translate(struct nvc0_program *prog)
       return FALSE;
 
    info->type = prog->type;
-   info->targetArch = 0xc0;
+   info->target = 0xc0;
+   info->bin.sourceRep = NV50_PROGRAM_IR_TGSI;
    info->bin.source = (void *)prog->pipe.tokens;
 
    info->io.clipDistanceCount = prog->vp.num_ucps;
 
    info->assignSlots = nvc0_program_assign_varying_slots;
+
+#ifdef DEBUG
+   info->optLevel = debug_get_num_option("NV50_PROG_OPTIMIZE", 3);
+   info->dbgFlags = debug_get_num_option("NV50_PROG_DEBUG", 0);
+#else
+   info->optLevel = 3;
+#endif
 
    ret = nv50_ir_generate_code(info);
    if (ret) {
@@ -499,8 +504,8 @@ nvc0_program_translate(struct nvc0_program *prog)
 
    prog->code = info->bin.code;
    prog->code_size = info->bin.codeSize;
-   prog->immd_data = info->immd.buffer;
-   prog->immd_size = info->immd.bufferSize;
+   prog->immd_data = info->immd.buf;
+   prog->immd_size = info->immd.bufSize;
    prog->relocs = info->bin.relocData;
    prog->max_gpr = MAX2(4, (info->bin.maxGPR + 1));
 
@@ -534,12 +539,12 @@ nvc0_program_translate(struct nvc0_program *prog)
    if (ret)
       goto out;
 
-   if (info->requireTLS) {
-      assert(info->bin.tlsSize < (1 << 24));
+   if (info->bin.tlsSpace) {
+      assert(info->bin.tlsSpace < (1 << 24));
       prog->hdr[0] |= 1 << 26;
-      prog->hdr[1] |= info->bin.tlsSize; /* l[] size */
+      prog->hdr[1] |= info->bin.tlsSpace; /* l[] size */
    }
-   if (info->globalStoresEnabled)
+   if (info->io.globalAccess)
       prog->hdr[0] |= 1 << 16;
 
 out:
@@ -580,8 +585,9 @@ nvc0_program_upload_code(struct nvc0_context *nvc0, struct nvc0_program *prog)
    if (prog->relocs)
       nv50_ir_relocate_code(prog->relocs, prog->code, code_pos, lib_pos, 0);
 
-#if NV50_DEBUG & NV50_DEBUG_SHADER
-   nvc0_program_dump(prog);
+#ifdef DEBUG
+   if (debug_get_bool_option("NV50_PROG_DEBUG", FALSE))
+      nvc0_program_dump(prog);
 #endif
 
    nvc0_m2mf_push_linear(&nvc0->base, screen->text, prog->code_base,
