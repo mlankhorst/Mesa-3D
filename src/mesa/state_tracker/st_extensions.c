@@ -217,6 +217,12 @@ void st_init_limits(struct st_context *st)
 
       c->GLSLVersion = 120;
       c->UniformBooleanTrue = ~0;
+
+      if (screen->get_shader_param(screen, PIPE_SHADER_VERTEX,
+                                   PIPE_SHADER_CAP_INTEGERS)) {
+         c->GLSLVersion = 130;
+         c->NativeIntegers = GL_TRUE;
+      }
    }
 }
 

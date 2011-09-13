@@ -1528,15 +1528,14 @@ glsl_to_tgsi_visitor::visit(ir_expression *ir)
          st_src_reg temp = get_temp(native_integers ?
                glsl_type::get_instance(ir->operands[0]->type->base_type, 4, 1) :
                glsl_type::vec4_type);
-         assert(ir->operands[0]->type->base_type == GLSL_TYPE_FLOAT);
-         emit(ir, TGSI_OPCODE_SNE, st_dst_reg(temp), op[0], op[1]);
-         
-         /* After the dot-product, the value will be an integer on the
-          * range [0,4].  Zero becomes 1.0, and positive values become zero.
-          */
-         emit_dp(ir, result_dst, temp, temp, vector_elements);
+         emit(ir, TGSI_OPCODE_SEQ, st_dst_reg(temp), op[0], op[1]);
          
          if (result_dst.type == GLSL_TYPE_FLOAT) {
+            /* After the dot-product, the value will be an integer on the
+             * range [0,4].  Zero becomes 1.0, and positive values become zero.
+             */
+            emit_dp(ir, result_dst, temp, temp, vector_elements);
+
             /* Negating the result of the dot-product gives values on the range
              * [-4, 0].  Zero becomes 1.0, and negative values become zero.
              * This is achieved using SGE.
@@ -1545,10 +1544,18 @@ glsl_to_tgsi_visitor::visit(ir_expression *ir)
             sge_src.negate = ~sge_src.negate;
             emit(ir, TGSI_OPCODE_SGE, result_dst, sge_src, st_src_reg_for_float(0.0));
          } else {
-            /* The TGSI negate flag doesn't work for integers, so use SEQ 0
-             * instead.
-             */
-            emit(ir, TGSI_OPCODE_SEQ, result_dst, result_src, st_src_reg_for_int(0));
+            st_dst_reg dst_temp = st_dst_reg(temp);
+            st_src_reg src_xy = st_src_reg(temp);
+            st_src_reg src_zw = st_src_reg(temp);
+            st_src_reg src_x = st_src_reg(temp);
+            st_src_reg src_y = st_src_reg(temp);
+            src_xy.swizzle = MAKE_SWIZZLE4(0, 1, 0, 1);
+            src_zw.swizzle = MAKE_SWIZZLE4(2, 3, 2, 3);
+            src_x.swizzle = MAKE_SWIZZLE4(0, 0, 0, 0);
+            src_y.swizzle = MAKE_SWIZZLE4(1, 1, 1, 1);
+            emit(ir, TGSI_OPCODE_AND, dst_temp, src_xy, src_zw);
+            emit(ir, TGSI_OPCODE_AND, result_dst, src_x, src_y);
+            // emit(ir, TGSI_OPCODE_USNE, result_dst, temp, st_src_reg_for_int(0));
          }
       } else {
          emit(ir, TGSI_OPCODE_SEQ, result_dst, op[0], op[1]);
@@ -1797,7 +1804,7 @@ glsl_to_tgsi_visitor::visit(ir_expression *ir)
          break;
       }
    case ir_unop_round_even:
-      assert(!"GLSL 1.30 features unsupported");
+      emit(ir, TGSI_OPCODE_ROUND, result_dst, op[0]);
       break;
 
    case ir_quadop_vector:
@@ -5098,7 +5105,7 @@ st_link_shader(struct gl_context *ctx, struct gl_shader_program *prog)
          /* Lowering */
          do_mat_op_to_vec(ir);
          lower_instructions(ir, (MOD_TO_FRACT | DIV_TO_MUL_RCP | EXP_TO_EXP2
-				 | LOG_TO_LOG2 | INT_DIV_TO_MUL_RCP
+				 | LOG_TO_LOG2
         			 | ((options->EmitNoPow) ? POW_TO_EXP2 : 0)));
 
          progress = do_lower_jumps(ir, true, true, options->EmitNoMainReturn, options->EmitNoCont, options->EmitNoLoops) || progress;
