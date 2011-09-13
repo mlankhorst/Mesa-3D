@@ -361,7 +361,7 @@ public:
 
    inline ValueRef& operator=(Value *val) { this->set(val); return *this; }
 
-   inline bool exists() const { return static_cast<bool>(value); }
+   inline bool exists() const { return value != NULL; }
 
    void set(Value *);
    void set(const ValueRef&);
@@ -386,7 +386,7 @@ public:
       Iterator(ValueRef *ref) : pos(ref), ini(ref) { }
 
       inline ValueRef *get() const { return pos; }
-      inline bool end() const { return !static_cast<bool>(pos); }
+      inline bool end() const { return pos == NULL; }
       inline void next() { pos = (pos->next != ini) ? pos->next : 0; }
 
    private:
@@ -417,7 +417,7 @@ public:
 
    inline ValueDef& operator=(Value *val) { this->set(val); return *this; }
 
-   inline bool exists() const { return static_cast<bool>(value); }
+   inline bool exists() const { return value != NULL; }
 
    inline Value *get() const { return value; }
    inline Value *rep() const;
@@ -443,7 +443,7 @@ public:
       Iterator(ValueDef *def) : pos(def), ini(def) { }
 
       inline ValueDef *get() const { return pos; }
-      inline bool end() const { return !static_cast<bool>(pos); }
+      inline bool end() const { return pos == NULL; }
       inline void next() { pos = (pos->next != ini) ? pos->next : NULL; }
 
    private:

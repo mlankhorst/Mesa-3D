@@ -239,7 +239,7 @@ BasicBlock::dominatedBy(BasicBlock *that)
    while (dn && dn != bn)
       dn = dn->parent();
 
-   return static_cast<bool>(dn);
+   return dn != NULL;
 }
 
 unsigned int
