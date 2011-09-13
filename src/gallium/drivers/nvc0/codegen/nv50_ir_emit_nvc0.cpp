@@ -1293,6 +1293,10 @@ CodeEmitterNVC0::emitCachingMode(CacheMode c)
 // case CACHE_WT:
       val = 0x300;
       break;
+   default:
+      val = 0;
+      assert(!"invalid caching mode");
+      break;
    }
    code[0] |= val;
 }
