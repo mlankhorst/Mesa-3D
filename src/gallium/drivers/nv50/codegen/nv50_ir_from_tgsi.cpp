@@ -1084,12 +1084,19 @@ Converter::makeSym(uint tgsiFile, int fileIdx, int idx, int c, uint32_t address)
 }
 
 static inline uint8_t
-cvtInterpMode(const struct nv50_ir_varying *var, operation &op)
+translateInterpMode(const struct nv50_ir_varying *var, operation& op)
 {
-   uint8_t mode = var->flat ? NV50_IR_INTERP_FLAT :
-      (var->linear ? NV50_IR_INTERP_LINEAR : NV50_IR_INTERP_PERSPECTIVE);
+   uint8_t mode;
 
-   op = mode == NV50_IR_INTERP_PERSPECTIVE ? OP_PINTERP : OP_LINTERP;
+   if (var->flat)
+      mode = NV50_IR_INTERP_FLAT;
+   else
+   if (var->linear)
+      mode = NV50_IR_INTERP_LINEAR;
+   else
+      mode = NV50_IR_INTERP_PERSPECTIVE;
+
+   op = (mode == NV50_IR_INTERP_PERSPECTIVE) ? OP_PINTERP : OP_LINTERP;
 
    if (var->centroid)
       mode |= NV50_IR_INTERP_CENTROID;
@@ -1102,7 +1109,9 @@ Converter::interpolate(tgsi::Instruction::SrcRegister src, int c, Value *ptr)
 {
    operation op;
 
-   const uint8_t mode = cvtInterpMode(&info->in[ptr ? 0 : src.getIndex(0)], op);
+   // XXX: no way to know interpolation mode if we don't know what's accessed
+   const uint8_t mode = translateInterpMode(&info->in[ptr ? 0 :
+                                                      src.getIndex(0)], op);
 
    Instruction *insn = new_Instruction(func, op, TYPE_F32);
 
