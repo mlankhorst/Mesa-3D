@@ -464,7 +464,7 @@ public:
    {
       assert(data && set.data);
       assert(size == set.size);
-      memcpy(data, set.data, set.size / 8);
+      memcpy(data, set.data, (set.size + 7) / 8);
       return *this;
    }
 

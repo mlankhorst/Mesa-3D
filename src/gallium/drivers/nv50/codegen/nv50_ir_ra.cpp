@@ -137,7 +137,7 @@ RegisterSet::occupy(const Value *val)
 
    uint32_t m = (1 << (val->reg.size >> unit[f])) - 1;
 
-   NV50_DBGMSG(PROG_RA, "reg occupy: %u[%i] %x\n", f, id, m);
+   INFO_DBG(0, REG_ALLOC, "reg occupy: %u[%i] %x\n", f, id, m);
 
    bits[f][id / 32] |= m << (id % 32);
 
@@ -155,7 +155,7 @@ RegisterSet::release(const Value *val)
 
    uint32_t m = (1 << (val->reg.size >> unit[f])) - 1;
 
-   NV50_DBGMSG(PROG_RA, "reg release: %u[%i] %x\n", f, id, m);
+   INFO_DBG(0, REG_ALLOC, "reg release: %u[%i] %x\n", f, id, m);
 
    bits[f][id / 32] &= ~(m << (id % 32));
 }
@@ -247,8 +247,8 @@ RegAlloc::BuildIntervalsPass::addLiveRange(Value *val,
    if (begin < bb->getEntry()->serial || begin > bb->getExit()->serial)
       begin = bb->getEntry()->serial;
 
-   NV50_DBGMSG(PROG_RA, "%%%i <- live range [%i(%i), %i)\n",
-               val->id, begin, insn->serial, end);
+   INFO_DBG(prog->dbgFlags, REG_ALLOC, "%%%i <- live range [%i(%i), %i)\n",
+            val->id, begin, insn->serial, end);
 
    if (begin != end) // empty ranges are only added as hazards for fixed regs
       val->livei.extend(begin, end);
@@ -281,8 +281,6 @@ RegAlloc::PhiMovesPass::visit(BasicBlock *bb)
 {
    Instruction *phi, *mov;
    BasicBlock *pb, *pn;
-
-   NV50_DBGMSG(PROG_RA, "PhiMoves: BB:%i\n", bb->getId());
 
    for (Graph::EdgeIterator ei = bb->cfg.incident(); !ei.end(); ei.next()) {
       pb = pn = BasicBlock::get(ei.getNode());
@@ -325,6 +323,7 @@ RegAlloc::PhiMovesPass::visit(BasicBlock *bb)
    return true;
 }
 
+// Build the set of live-in variables of bb.
 bool
 RegAlloc::buildLiveSets(BasicBlock *bb)
 {
@@ -332,7 +331,7 @@ RegAlloc::buildLiveSets(BasicBlock *bb)
    Instruction *i;
    unsigned int s, d;
 
-   NV50_DBGMSG(PROG_RA, "buildLiveSets: BB:%i\n", bb->getId());
+   INFO_DBG(prog->dbgFlags, REG_ALLOC, "buildLiveSets(BB:%i)\n", bb->getId());
 
    bb->liveSet.allocate(func->allLValues.getSize(), false);
 
@@ -412,7 +411,7 @@ RegAlloc::BuildIntervalsPass::visit(BasicBlock *bb)
 {
    collectLiveValues(bb);
 
-   NV50_DBGMSG(PROG_RA, "BuildIntervals for BB:%i\n", bb->getId());
+   INFO_DBG(prog->dbgFlags, REG_ALLOC, "BuildIntervals(BB:%i)\n", bb->getId());
 
    // go through out blocks and delete phi sources that do not originate from
    // the current block from the live set
@@ -568,7 +567,7 @@ RegAlloc::allocateConstrainedValues()
    RegisterSet regSet[4];
    DLList regVals;
 
-   NV50_DBGMSG(PROG_RA, "RA: allocating constrained values\n");
+   INFO_DBG(prog->dbgFlags, REG_ALLOC, "RA: allocating constrained values\n");
 
    collectLValues(regVals, true);
 
@@ -629,7 +628,7 @@ RegAlloc::linearScan()
    DLList unhandled, active, inactive;
    RegisterSet f(prog->getTarget()), free(prog->getTarget());
 
-   NV50_DBGMSG(PROG_RA, "RA: linear scan\n");
+   INFO_DBG(prog->dbgFlags, REG_ALLOC, "RA: linear scan\n");
 
    collectLValues(unhandled, false);
 

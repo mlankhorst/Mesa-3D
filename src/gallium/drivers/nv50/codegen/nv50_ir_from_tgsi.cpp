@@ -2237,6 +2237,7 @@ Converter::run()
    }
 
    prog->main->setEntry(entry);
+   prog->main->setExit(leave);
 
    setPosition(entry, true);
    entryBBs.push(entry);

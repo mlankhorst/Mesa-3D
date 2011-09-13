@@ -8,7 +8,7 @@ Function::Function(Program *p, const char *fnName)
      name(fnName),
      prog(p)
 {
-   // cfgExit = NULL;
+   cfgExit = NULL;
    domTree = NULL;
 
    bbArray = NULL;
@@ -279,6 +279,15 @@ Function::setEntry(BasicBlock *bb)
    if (cfg.getRoot())
       return false;
    cfg.insert(&bb->cfg);
+   return true;
+}
+
+bool
+Function::setExit(BasicBlock *bb)
+{
+   if (cfgExit)
+      return false;
+   cfgExit = &bb->cfg;
    return true;
 }
 

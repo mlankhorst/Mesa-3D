@@ -910,6 +910,7 @@ public:
    void printCFGraph(const char *filePath);
 
    bool setEntry(BasicBlock *);
+   bool setExit(BasicBlock *);
 
    unsigned int orderInstructions(ArrayList&);
 
@@ -923,7 +924,7 @@ public:
 
 public:
    Graph cfg;
-   // Graph::Node *cfgExit;
+   Graph::Node *cfgExit;
    Graph *domTree;
    Graph::Node call; // node in the call graph
 
