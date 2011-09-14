@@ -457,8 +457,8 @@ nvc0_program_dump(struct nvc0_program *prog)
    unsigned pos;
 
    for (pos = 0; pos < sizeof(prog->hdr) / sizeof(prog->hdr[0]); ++pos)
-      debug_printf("HDR[%02lx] = 0x%08x\n",
-                   pos * sizeof(prog->hdr[0]), prog->hdr[pos]);
+      debug_printf("HDR[%02x] = 0x%08x\n",
+                   (uint32_t)pos * sizeof(prog->hdr[0]), prog->hdr[pos]);
 
    debug_printf("shader binary code (0x%x bytes):", prog->code_size);
    for (pos = 0; pos < prog->code_size / 4; ++pos) {
@@ -482,8 +482,18 @@ nvc0_program_translate(struct nvc0_program *prog)
 
    info->type = prog->type;
    info->target = 0xc0;
-   info->bin.sourceRep = NV50_PROGRAM_IR_TGSI;
-   info->bin.source = (void *)prog->pipe.tokens;
+   if (prog->pipe.representation == PIPE_SHADER_IR_TGSI)
+      info->bin.source = (void *)prog->pipe.tokens;
+   else
+      info->bin.source = prog->pipe.ir;
+   switch (prog->pipe.representation) {
+   case PIPE_SHADER_IR_TGSI: info->bin.sourceRep = NV50_PROGRAM_IR_TGSI; break;
+   case PIPE_SHADER_IR_SM4: info->bin.sourceRep = NV50_PROGRAM_IR_SM4; break;
+   default:
+      assert(!"unsupported source representation");
+      FREE(info);
+      return FALSE;
+   }
 
    info->io.clipDistanceCount = prog->vp.num_ucps;
 

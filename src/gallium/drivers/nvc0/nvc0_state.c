@@ -508,6 +508,56 @@ nvc0_gp_set_sampler_views(struct pipe_context *pipe,
  */
 
 static void *
+nvc0_create_program(struct pipe_context *pipe,
+                    unsigned type,
+                    unsigned repr, void *ir)
+{
+   struct nvc0_program *prog;
+
+   prog = CALLOC_STRUCT(nvc0_program);
+   if (!prog)
+      return NULL;
+
+   prog->type = type;
+   prog->pipe.ir = ir;
+   prog->pipe.representation = repr;
+
+   return (void *)prog;
+}
+
+static void
+nvc0_bind_program(struct pipe_context *pipe, unsigned type, void *hwcso)
+{
+    struct nvc0_context *nvc0 = nvc0_context(pipe);
+
+    switch (type) {
+    case PIPE_SHADER_VERTEX:
+       nvc0->dirty |= NVC0_NEW_VERTPROG;
+       nvc0->vertprog = hwcso;
+       break;
+    case PIPE_SHADER_HULL:
+       nvc0->dirty |= NVC0_NEW_TCTLPROG;
+       nvc0->tctlprog = hwcso;
+       break;
+    case PIPE_SHADER_DOMAIN:
+       nvc0->dirty |= NVC0_NEW_TEVLPROG;
+       nvc0->tevlprog = hwcso;
+       break;
+    case PIPE_SHADER_GEOMETRY:
+       nvc0->dirty |= NVC0_NEW_GMTYPROG;
+       nvc0->gmtyprog = hwcso;
+       break;
+    case PIPE_SHADER_FRAGMENT:
+       nvc0->dirty |= NVC0_NEW_FRAGPROG;
+       nvc0->vertprog = hwcso;
+       break;
+    default:
+       assert(!"invalid program type");
+       break;
+    }
+}
+
+static void *
 nvc0_sp_state_create(struct pipe_context *pipe,
                      const struct pipe_shader_state *cso, unsigned type)
 {
@@ -519,6 +569,7 @@ nvc0_sp_state_create(struct pipe_context *pipe,
 
    prog->type = type;
    prog->pipe.tokens = tgsi_dup_tokens(cso->tokens);
+   prog->pipe.representation = PIPE_SHADER_IR_TGSI;
 
    return (void *)prog;
 }
@@ -851,6 +902,10 @@ nvc0_init_state_functions(struct nvc0_context *nvc0)
    pipe->delete_vs_state = nvc0_sp_state_delete;
    pipe->delete_fs_state = nvc0_sp_state_delete;
    pipe->delete_gs_state = nvc0_sp_state_delete;
+
+   pipe->create_program = nvc0_create_program;
+   pipe->bind_program = nvc0_bind_program;
+   pipe->destroy_program = nvc0_sp_state_delete;
 
    pipe->set_blend_color = nvc0_set_blend_color;
    pipe->set_stencil_ref = nvc0_set_stencil_ref;
