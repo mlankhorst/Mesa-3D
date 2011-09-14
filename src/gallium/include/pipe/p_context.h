@@ -158,6 +158,12 @@ struct pipe_context {
    void   (*bind_depth_stencil_alpha_state)(struct pipe_context *, void *);
    void   (*delete_depth_stencil_alpha_state)(struct pipe_context *, void *);
 
+   void * (*create_program)(struct pipe_context *,
+                            unsigned type,
+                            unsigned repr, void *);
+   void   (*bind_program)(struct pipe_context *, unsigned type, void *);
+   void   (*destroy_program)(struct pipe_context *, void *);
+
    void * (*create_fs_state)(struct pipe_context *,
                              const struct pipe_shader_state *);
    void   (*bind_fs_state)(struct pipe_context *, void *);

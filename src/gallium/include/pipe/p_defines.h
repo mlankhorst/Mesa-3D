@@ -347,7 +347,14 @@ enum pipe_transfer_usage {
 #define PIPE_SHADER_VERTEX   0
 #define PIPE_SHADER_FRAGMENT 1
 #define PIPE_SHADER_GEOMETRY 2
+#define PIPE_SHADER_HULL     4
+#define PIPE_SHADER_DOMAIN   5
 #define PIPE_SHADER_TYPES    3
+
+#define PIPE_SHADER_IR_TGSI  0
+#define PIPE_SHADER_IR_GLSL  1
+#define PIPE_SHADER_IR_LLVM  2
+#define PIPE_SHADER_IR_SM4   3
 
 
 /**
@@ -367,7 +374,8 @@ enum pipe_transfer_usage {
 #define PIPE_PRIM_LINE_STRIP_ADJACENCY    11
 #define PIPE_PRIM_TRIANGLES_ADJACENCY      12
 #define PIPE_PRIM_TRIANGLE_STRIP_ADJACENCY 13
-#define PIPE_PRIM_MAX                      14
+#define PIPE_PRIM_PATCHES                  14
+#define PIPE_PRIM_MAX                      15
 
 
 /**

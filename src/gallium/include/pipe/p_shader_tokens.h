@@ -143,9 +143,17 @@ struct tgsi_declaration_dimension
 #define TGSI_SEMANTIC_FACE       7
 #define TGSI_SEMANTIC_EDGEFLAG   8
 #define TGSI_SEMANTIC_PRIMID     9
-#define TGSI_SEMANTIC_INSTANCEID 10
-#define TGSI_SEMANTIC_STENCIL    11
-#define TGSI_SEMANTIC_COUNT      12 /**< number of semantic values */
+#define TGSI_SEMANTIC_INSTANCEID   10
+#define TGSI_SEMANTIC_VERTEXID     11
+#define TGSI_SEMANTIC_INVOCATIONID 12
+#define TGSI_SEMANTIC_CLIPDISTANCE 13
+#define TGSI_SEMANTIC_TESSFACTOR   14
+#define TGSI_SEMANTIC_TESSCOORD    15
+#define TGSI_SEMANTIC_LAYER        18
+#define TGSI_SEMANTIC_VIEWPORTINDEX 19
+#define TGSI_SEMANTIC_SAMPLEMASK 16
+#define TGSI_SEMANTIC_STENCIL    17
+#define TGSI_SEMANTIC_COUNT      20 /**< number of semantic values */
 
 struct tgsi_declaration_semantic
 {
@@ -184,10 +192,17 @@ union tgsi_immediate_data
 #define TGSI_PROPERTY_GS_INPUT_PRIM          0
 #define TGSI_PROPERTY_GS_OUTPUT_PRIM         1
 #define TGSI_PROPERTY_GS_MAX_OUTPUT_VERTICES 2
-#define TGSI_PROPERTY_FS_COORD_ORIGIN        3
-#define TGSI_PROPERTY_FS_COORD_PIXEL_CENTER  4
-#define TGSI_PROPERTY_FS_COLOR0_WRITES_ALL_CBUFS 5
-#define TGSI_PROPERTY_COUNT                  6
+#define TGSI_PROPERTY_GS_INSTANCE_COUNT      3
+#define TGSI_PROPERTY_FS_COORD_ORIGIN        4
+#define TGSI_PROPERTY_FS_COORD_PIXEL_CENTER  5
+#define TGSI_PROPERTY_FS_COLOR0_WRITES_ALL_CBUFS 6
+#define TGSI_PROPERTY_DS_PARTITIONING        7
+#define TGSI_PROPERTY_COUNT                  8
+
+#define PIPE_TESS_PART_FRACT_ODD  0
+#define PIPE_TESS_PART_FRACT_EVEN 1
+#define PIPE_TESS_PART_INTEGER    2
+#define PIPE_TESS_PART_POW2       3
 
 struct tgsi_property {
    unsigned Type         : 4;  /**< TGSI_TOKEN_TYPE_PROPERTY */

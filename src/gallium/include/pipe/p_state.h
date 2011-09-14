@@ -166,6 +166,8 @@ struct pipe_clip_state
 struct pipe_shader_state
 {
    const struct tgsi_token *tokens;
+   void *ir;
+   unsigned representation; /**< TGSI_SHADER_IR */
 };
 
 
