@@ -97,19 +97,24 @@ nvc0_query_create(struct pipe_context *pipe, unsigned type)
 {
    struct nvc0_context *nvc0 = nvc0_context(pipe);
    struct nvc0_query *q;
+   unsigned space = NVC0_QUERY_ALLOC_SPACE;
 
    q = CALLOC_STRUCT(nvc0_query);
    if (!q)
       return NULL;
 
-   if (!nvc0_query_allocate(nvc0, q, NVC0_QUERY_ALLOC_SPACE)) {
+   if (type == PIPE_QUERY_PIPELINE_STATISTICS)
+      space = NVC0_QUERY_ALLOC_SPACE * 2;
+
+   if (!nvc0_query_allocate(nvc0, q, space)) {
       FREE(q);
       return NULL;
    }
 
    q->is64bit = (type == PIPE_QUERY_PRIMITIVES_GENERATED ||
                  type == PIPE_QUERY_PRIMITIVES_EMITTED ||
-                 type == PIPE_QUERY_SO_STATISTICS);
+                 type == PIPE_QUERY_SO_STATISTICS ||
+                 type == PIPE_QUERY_PIPELINE_STATISTICS);
    q->type = type;
 
    if (q->type == PIPE_QUERY_OCCLUSION_COUNTER) {
@@ -181,6 +186,19 @@ nvc0_query_begin(struct pipe_context *pipe, struct pipe_query *pq)
    case PIPE_QUERY_TIME_ELAPSED:
       nvc0_query_get(chan, q, 0x10, 0x00005002);
       break;
+   case PIPE_QUERY_PIPELINE_STATISTICS:
+      /* XXX: values for nv50, those marked with x don't work */
+      nvc0_query_get(chan, q, 0x80 + 0x00, 0x00801002); /* VFETCH, VERTICES */
+      nvc0_query_get(chan, q, 0x80 + 0x08, 0x01801002); /* VFETCH, PRIMS x */
+      nvc0_query_get(chan, q, 0x80 + 0x10, 0x02802002); /* VP, LAUNCHES */
+      nvc0_query_get(chan, q, 0x80 + 0x18, 0x03806002); /* GP, LAUNCHES x */
+      nvc0_query_get(chan, q, 0x80 + 0x20, 0x04806002); /* GP, PRIMS_OUT */
+      nvc0_query_get(chan, q, 0x80 + 0x28, 0x07804002); /* RAST, PRIMS_IN x */
+      nvc0_query_get(chan, q, 0x80 + 0x30, 0x08804002); /* RAST, PRIMS */
+      nvc0_query_get(chan, q, 0x80 + 0x38, 0x0980a002); /* ROP, PIXELS x */
+      nvc0_query_get(chan, q, 0x80 + 0x40, 0x02803002); /* TCP, LAUNCHES x */
+      nvc0_query_get(chan, q, 0x80 + 0x48, 0x02803002); /* TEP, LAUNCHES x */
+      break;
    default:
       break;
    }
@@ -219,6 +237,18 @@ nvc0_query_end(struct pipe_context *pipe, struct pipe_query *pq)
    case PIPE_QUERY_GPU_FINISHED:
       nvc0_query_get(chan, q, 0, 0x1000f010);
       break;
+   case PIPE_QUERY_PIPELINE_STATISTICS:
+      nvc0_query_get(chan, q, 0x00, 0x00801002); /* VFETCH, VERTICES */
+      nvc0_query_get(chan, q, 0x08, 0x01801002); /* VFETCH, PRIMS */
+      nvc0_query_get(chan, q, 0x10, 0x02802002); /* VP, LAUNCHES */
+      nvc0_query_get(chan, q, 0x18, 0x03806002); /* GP, LAUNCHES */
+      nvc0_query_get(chan, q, 0x20, 0x04806002); /* GP, PRIMS_OUT */
+      nvc0_query_get(chan, q, 0x28, 0x07804002); /* RAST, PRIMS_IN */
+      nvc0_query_get(chan, q, 0x30, 0x08804002); /* RAST, PRIMS */
+      nvc0_query_get(chan, q, 0x38, 0x0980a002); /* ROP, PIXELS */
+      nvc0_query_get(chan, q, 0x40, 0x02803002); /* TCP, LAUNCHES */
+      nvc0_query_get(chan, q, 0x48, 0x02803002); /* TEP, LAUNCHES */
+      break;
    default:
       assert(0);
       break;
@@ -250,6 +280,7 @@ nvc0_query_result(struct pipe_context *pipe, struct pipe_query *pq,
    uint32_t *res32 = result;
    boolean *res8 = result;
    uint64_t *data64 = (uint64_t *)q->data;
+   unsigned i;
 
    if (q->type == PIPE_QUERY_GPU_FINISHED) {
       res8[0] = nvc0_query_ready(q);
@@ -288,6 +319,10 @@ nvc0_query_result(struct pipe_context *pipe, struct pipe_query *pq,
       break;
    case PIPE_QUERY_TIME_ELAPSED:
       res64[0] = data64[1] - data64[3];
+      break;
+   case PIPE_QUERY_PIPELINE_STATISTICS:
+      for (i = 0; i < 10; ++i)
+         res64[i] = data64[i] - data64[16 + i];
       break;
    default:
       return FALSE;
