@@ -1342,15 +1342,19 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 		if(invalid(query_desc->Query >= D3D11_QUERY_COUNT))
 			return E_INVALIDARG;
 		unsigned query_type = d3d11_to_pipe_query[query_desc->Query];
-		if(!query_type)
+		if(!query_type) {
+			debug_printf("WARNING: query type %u not implemented\n", query_desc->Query);
 			return E_NOTIMPL;
+		}
 
-		if(out_query)
+		if(!out_query)
 			return S_FALSE;
 
 		struct pipe_query* query = immediate_pipe->create_query(immediate_pipe, query_type);
-		if(!query)
+		if(!query) {
+			debug_printf("ERROR: failed to create query of type %u\n", query_desc->Query);
 			return E_FAIL;
+		}
 
 		*out_query = new GalliumD3D11Query(this, query, d3d11_query_size[query_desc->Query], *query_desc);
 		return S_OK;

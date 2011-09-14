@@ -1328,6 +1328,7 @@ changed:
 		ID3D11Asynchronous *async)
 	{
 		SYNCHRONIZED;
+		assert(async);
 		if(caps.queries)
 			pipe->begin_query(pipe, ((GalliumD3D11Asynchronous<>*)async)->query);
 	}
@@ -1336,6 +1337,7 @@ changed:
 		ID3D11Asynchronous *async)
 	{
 		SYNCHRONIZED;
+		assert(async);
 		if(caps.queries)
 			pipe->end_query(pipe, ((GalliumD3D11Asynchronous<>*)async)->query);
 	}
@@ -1347,6 +1349,7 @@ changed:
 		unsigned get_data_flags)
 	{
 		SYNCHRONIZED;
+		assert(iasync);
 		if(!caps.queries)
 			return E_NOTIMPL;
 
