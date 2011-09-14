@@ -67,6 +67,22 @@ static unsigned caps_dx_9_3[] = {
 	UTIL_CHECK_TERMINATE
 };
 
+static unsigned caps_dx_10_0[] = {
+	UTIL_CHECK_CAP(INDEP_BLEND_ENABLE),
+	UTIL_CHECK_CAP(ANISOTROPIC_FILTER),
+	UTIL_CHECK_CAP(TGSI_INSTANCEID),
+	UTIL_CHECK_CAP(VERTEX_ELEMENT_INSTANCE_DIVISOR),
+	UTIL_CHECK_CAP(MIXED_COLORBUFFER_FORMATS),
+	UTIL_CHECK_CAP(FRAGMENT_COLOR_CLAMP_CONTROL),
+	UTIL_CHECK_INT(MAX_RENDER_TARGETS, 8),
+	UTIL_CHECK_INT(MAX_TEXTURE_2D_LEVELS, 13),
+	UTIL_CHECK_INT(MAX_TEXTURE_ARRAY_LAYERS, 512),
+	UTIL_CHECK_INT(MAX_VERTEX_TEXTURE_UNITS, 16),
+	UTIL_CHECK_SHADER(GEOMETRY, MAX_CONST_BUFFERS, 14),
+	UTIL_CHECK_SHADER(FRAGMENT, INTEGERS, 1),
+	UTIL_CHECK_TERMINATE
+};
+
 
 // this is called "screen" because in the D3D10 case it's only part of the device
 template<bool threadsafe>
@@ -108,8 +124,9 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 		memset(format_support, 0xff, sizeof(format_support));
 
 		float default_level;
-		/* don't even attempt to autodetect D3D10 level support, since it's just not fully implemented yet */
-		if(util_check_caps(screen, caps_dx_9_3))
+		if(util_check_caps(screen, caps_dx_10_0))
+			default_level = 10.0;
+		else if(util_check_caps(screen, caps_dx_9_3))
 			default_level = 9.3;
 		else if(util_check_caps(screen, caps_dx_9_2))
 			default_level = 9.2;
