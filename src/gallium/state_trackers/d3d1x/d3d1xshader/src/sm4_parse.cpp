@@ -157,7 +157,7 @@ struct sm4_parser
 			case SM4_OPERAND_INDEX_REPR_REG:
 relative:
 				op.indices[i].reg.reset(new sm4_op());
-				read_op(&*op.indices[0].reg);
+				read_op(&*op.indices[i].reg);
 				break;
 			case SM4_OPERAND_INDEX_REPR_REG_IMM32:
 				op.indices[i].disp = (int32_t)read32();
@@ -350,8 +350,8 @@ relative:
 					dcl.structured.stride = read32();
 					break;
 				case SM4_OPCODE_DCL_STREAM:
-					/* TODO: dcl_stream is undocumented: what is it? */
-					fail("Unhandled dcl_stream since it's undocumented");
+					READ_OP(STREAM);
+					break;
 				default:
 					fail("Unhandled declaration");
 				}
