@@ -145,15 +145,12 @@ bool Graph::Node::detach(Graph::Node *node)
 // Cut a node from the graph, deleting all attached edges.
 void Graph::Node::cut()
 {
-   if (!graph || (!in && !out))
-      return;
-
    while (out)
       delete out;
    while (in)
       delete in;
 
-   if (graph->root == this)
+   if (graph && graph->root == this)
       graph->root = NULL;
 }
 
