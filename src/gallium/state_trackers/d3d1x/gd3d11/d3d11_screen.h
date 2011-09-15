@@ -597,7 +597,7 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 
 		// putting semantics matching in the core API seems to be a (minor) design mistake
 
-		struct dxbc_chunk_signature* sig = dxbc_find_signature(shader_bytecode_with_input_signature, bytecode_length, false);
+		struct dxbc_chunk_signature* sig = dxbc_find_signature(shader_bytecode_with_input_signature, bytecode_length, false, false);
 		D3D11_SIGNATURE_PARAMETER_DESC* params;
 		unsigned num_params = dxbc_parse_signature(sig, &params);
 
@@ -1207,6 +1207,20 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 
 		if(dump)
 			sm4->dump();
+
+		struct dxbc_chunk_signature *sig;
+
+		sig = dxbc_find_signature(shader_bytecode, bytecode_length, false, false);
+		if (sig)
+			sm4->params_in_num = dxbc_parse_signature(sig, &sm4->params_in);
+
+		sig = dxbc_find_signature(shader_bytecode, bytecode_length, true, true);
+		if (sig)
+			sm4->params_patch_num = dxbc_parse_signature(sig, &sm4->params_patch);
+
+		sig = dxbc_find_signature(shader_bytecode, bytecode_length, true, false);
+		if (sig)
+			sm4->params_out_num = dxbc_parse_signature(sig, &sm4->params_out);
 
 		struct pipe_shader_state tgsi_shader;
 		memset(&tgsi_shader, 0, sizeof(tgsi_shader));

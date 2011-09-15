@@ -351,11 +351,20 @@ private:
 	{}
 };
 
+struct _D3D11_SIGNATURE_PARAMETER_DESC;
+
 struct sm4_program
 {
 	sm4_token_version version;
 	std::vector<sm4_dcl*> dcls;
 	std::vector<sm4_insn*> insns;
+
+	struct _D3D11_SIGNATURE_PARAMETER_DESC *params_in;
+	struct _D3D11_SIGNATURE_PARAMETER_DESC *params_patch;
+	struct _D3D11_SIGNATURE_PARAMETER_DESC *params_out;
+	unsigned params_in_num;
+	unsigned params_patch_num;
+	unsigned params_out_num;
 
 	/* for ifs, the insn number of the else or endif if there is no else
 	 * for elses, the insn number of the endif
@@ -383,6 +392,7 @@ struct sm4_program
 		memset(&version, 0, sizeof(version));
 		labels_found = false;
 		resource_sampler_slots_assigned = false;
+		params_in_num = params_out_num = params_patch_num = 0;
 	}
 
 	~sm4_program()
@@ -391,6 +401,13 @@ struct sm4_program
 			delete *i;
 		for(std::vector<sm4_insn*>::iterator i = insns.begin(), e = insns.end(); i != e; ++i)
 			delete *i;
+
+		if (params_in_num)
+			free(params_in);
+		if (params_patch_num)
+			free(params_patch);
+		if (params_out_num)
+			free(params_out);
 	}
 
 	void dump();

@@ -52,7 +52,7 @@ HRESULT D3D10GetInputSignatureBlob(
 	ID3D10Blob **signature_blob
 )
 {
-	dxbc_chunk_signature* sig = dxbc_find_signature(shader_bytecode, bytecode_length, false);
+	dxbc_chunk_signature* sig = dxbc_find_signature(shader_bytecode, bytecode_length, false, false);
 	if(!sig)
 		return E_FAIL;
 
@@ -65,7 +65,7 @@ HRESULT D3D10GetOutputSignatureBlob(
 	ID3D10Blob **signature_blob
 )
 {
-	dxbc_chunk_signature* sig = dxbc_find_signature(shader_bytecode, bytecode_length, true);
+	dxbc_chunk_signature* sig = dxbc_find_signature(shader_bytecode, bytecode_length, true, false);
 	if(!sig)
 		return E_FAIL;
 
@@ -79,10 +79,10 @@ HRESULT D3D10GetInputAndOutputSignatureBlob(
 )
 {
 	dxbc_chunk_signature* sigs[2];
-	sigs[0] = dxbc_find_signature(shader_bytecode, bytecode_length, false);
+	sigs[0] = dxbc_find_signature(shader_bytecode, bytecode_length, false, false);
 	if(!sigs[0])
 		return E_FAIL;
-	sigs[1] = dxbc_find_signature(shader_bytecode, bytecode_length, true);
+	sigs[1] = dxbc_find_signature(shader_bytecode, bytecode_length, true, false);
 	if(!sigs[1])
 		return E_FAIL;
 
