@@ -482,6 +482,8 @@ Converter::getDstOpndCount(enum sm4_opcode opcode) const
    case SM4_OPCODE_SINCOS:
       return 2;
    case SM4_OPCODE_DISCARD:
+   case SM4_OPCODE_BREAKC:
+   case SM4_OPCODE_CONTINUEC:
       return 0;
    default:
       return 1;
@@ -1081,7 +1083,7 @@ Converter::getVtxPtr(int s)
 Value *
 Converter::src(int i, int c)
 {
-   return src(*insn->ops[i + 1], c, i);
+   return src(*insn->ops[i + nDstOpnds], c, i);
 }
 
 Value *
@@ -1334,8 +1336,8 @@ Converter::handleSAMPLE(operation opr, Value *dst0[4])
 
    TexInstruction::Target tgt = resourceType[tR][shadow[tS] ? 1 : 0];
 
-   for (s = 0; s < tgt.getArgCount(); ++s)
-      arg[s] = src0[c] = src(0, c);
+   for (c = 0; c < tgt.getArgCount(); ++c)
+      arg[c] = src0[c] = src(0, c);
 
    if (insn->opcode == SM4_OPCODE_SAMPLE_L ||
        insn->opcode == SM4_OPCODE_SAMPLE_B) {
@@ -1541,6 +1543,12 @@ Converter::handleInstruction(unsigned int pos)
       }
       break;
 
+   case SM4_OPCODE_MOVC:
+      FOR_EACH_DST0_ENABLED_CHANNEL32(c)
+         mkCmp(OP_SLCT, CC_NEU, sTy, dst0[c], src(1, c), src(2, c),
+               src(0, c));
+      break;
+
    case SM4_OPCODE_ROUND_NE:
    case SM4_OPCODE_ROUND_NI:
    case SM4_OPCODE_ROUND_PI:
@@ -1724,7 +1732,14 @@ Converter::handleInstruction(unsigned int pos)
    }
       break;
    case SM4_OPCODE_BREAKC:
-      assert(!"BREAKC not implemented");
+   {
+      BasicBlock *nextBB = new BasicBlock(func);
+      BasicBlock *breakBB = reinterpret_cast<BasicBlock *>(breakBBs.peek().u.p);
+      mkFlow(OP_BREAK, breakBB, CC_P, src(0, 0));
+      bb->cfg.attach(&breakBB->cfg, Graph::Edge::CROSS);
+      bb->cfg.attach(&nextBB->cfg, Graph::Edge::FORWARD);
+      setPosition(nextBB, true);
+   }
       break;
    case SM4_OPCODE_CONTINUE:
    {
@@ -1787,7 +1802,8 @@ Converter::handleInstruction(unsigned int pos)
       break;
 
    default:
-      assert(!"illegal/unhandled SM4 opcode");
+      ERROR("SM4_OPCODE_#%u illegal / not supported\n", insn->opcode);
+      abort();
       return false;
    }
 
