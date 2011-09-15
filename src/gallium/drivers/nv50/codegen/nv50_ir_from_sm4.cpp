@@ -10,16 +10,17 @@ namespace tgsi {
 static nv50_ir::SVSemantic irSemantic(unsigned sn)
 {
    switch (sn) {
-   case TGSI_SEMANTIC_POSITION:   return nv50_ir::SV_POSITION;
-   case TGSI_SEMANTIC_FACE:       return nv50_ir::SV_FACE;
-   case TGSI_SEMANTIC_LAYER:      return nv50_ir::SV_LAYER;
-   case TGSI_SEMANTIC_VIEWPORT:   return nv50_ir::SV_VIEWPORT_INDEX;
-   case TGSI_SEMANTIC_PSIZE:      return nv50_ir::SV_POINT_SIZE;
-   case TGSI_SEMANTIC_CLIP:       return nv50_ir::SV_CLIP_DISTANCE;
-   case TGSI_SEMANTIC_VERTEXID:   return nv50_ir::SV_VERTEX_ID;
-   case TGSI_SEMANTIC_INSTANCEID: return nv50_ir::SV_INSTANCE_ID;
-   case TGSI_SEMANTIC_PRIMID:     return nv50_ir::SV_PRIMITIVE_ID;
-   case TGSI_SEMANTIC_TESSFACTOR: return nv50_ir::SV_TESS_FACTOR;
+   case TGSI_SEMANTIC_POSITION:      return nv50_ir::SV_POSITION;
+   case TGSI_SEMANTIC_FACE:          return nv50_ir::SV_FACE;
+   case TGSI_SEMANTIC_LAYER:         return nv50_ir::SV_LAYER;
+   case TGSI_SEMANTIC_VIEWPORTINDEX: return nv50_ir::SV_VIEWPORT_INDEX;
+   case TGSI_SEMANTIC_PSIZE:         return nv50_ir::SV_POINT_SIZE;
+   case TGSI_SEMANTIC_CLIPDISTANCE:  return nv50_ir::SV_CLIP_DISTANCE;
+   case TGSI_SEMANTIC_VERTEXID:      return nv50_ir::SV_VERTEX_ID;
+   case TGSI_SEMANTIC_INSTANCEID:    return nv50_ir::SV_INSTANCE_ID;
+   case TGSI_SEMANTIC_PRIMID:        return nv50_ir::SV_PRIMITIVE_ID;
+   case TGSI_SEMANTIC_TESSFACTOR:    return nv50_ir::SV_TESS_FACTOR;
+   case TGSI_SEMANTIC_TESSCOORD:     return nv50_ir::SV_TESS_COORD;
    default:
       return nv50_ir::SV_UNDEFINED;
    }
@@ -71,10 +72,10 @@ private:
 
    Value *domainPt[3]; // pre-fetched TessCoord
 
-   int nDstOpnds;
+   unsigned int nDstOpnds;
 
    Stack condBBs;
-   Stack joins;
+   Stack joinBBs;
    Stack loopBBs;
    Stack breakBBs;
 
@@ -120,9 +121,10 @@ private:
    Value *getVtxPtr(int s);
 
    bool checkDstSrcAliasing() const;
+   void insertConvergenceOps(BasicBlock *conv, BasicBlock *fork);
 
    operation cvtOpcode(enum sm4_opcode op) const;
-   int getDstOpndCount(enum sm4_opcode opcode) const;
+   unsigned int getDstOpndCount(enum sm4_opcode opcode) const;
 
    DataType inferSrcType(enum sm4_opcode op) const;
    DataType inferDstType(enum sm4_opcode op) const;
@@ -473,7 +475,7 @@ Converter::cvtOpcode(enum sm4_opcode op) const
    }
 }
 
-int
+unsigned int
 Converter::getDstOpndCount(enum sm4_opcode opcode) const
 {
    switch (opcode) {
@@ -601,13 +603,14 @@ Converter::tgsiSemantic(SVSemantic sv, int index)
    case SV_POSITION:       return TGSI_SEMANTIC_POSITION;
    case SV_FACE:           return TGSI_SEMANTIC_FACE;
    case SV_LAYER:          return TGSI_SEMANTIC_LAYER;
-   case SV_VIEWPORT_INDEX: return TGSI_SEMANTIC_VIEWPORT;
+   case SV_VIEWPORT_INDEX: return TGSI_SEMANTIC_VIEWPORTINDEX;
    case SV_POINT_SIZE:     return TGSI_SEMANTIC_PSIZE;
-   case SV_CLIP_DISTANCE:  return TGSI_SEMANTIC_CLIP;
+   case SV_CLIP_DISTANCE:  return TGSI_SEMANTIC_CLIPDISTANCE;
    case SV_VERTEX_ID:      return TGSI_SEMANTIC_VERTEXID;
    case SV_INSTANCE_ID:    return TGSI_SEMANTIC_INSTANCEID;
    case SV_PRIMITIVE_ID:   return TGSI_SEMANTIC_PRIMID;
    case SV_TESS_FACTOR:    return TGSI_SEMANTIC_TESSFACTOR;
+   case SV_TESS_COORD:     return TGSI_SEMANTIC_TESSCOORD;
    case SV_INVOCATION_ID:  return TGSI_SEMANTIC_INVOCATIONID;
    default:
       return TGSI_SEMANTIC_GENERIC;
@@ -693,14 +696,14 @@ Converter::parseSignature()
          info.io.cullDistanceMask |= 1 << sm4.params_out[i].SemanticIndex;
          // fall through
       case D3D_NAME_CLIP_DISTANCE:
-         info.out[i].sn = TGSI_SEMANTIC_CLIP;
+         info.out[i].sn = TGSI_SEMANTIC_CLIPDISTANCE;
          info.out[i].si = sm4.params_out[i].SemanticIndex;
          break;
       case D3D_NAME_RENDER_TARGET_ARRAY_INDEX:
          info.out[i].sn = TGSI_SEMANTIC_LAYER;
          break;
       case D3D_NAME_VIEWPORT_ARRAY_INDEX:
-         info.out[i].sn = TGSI_SEMANTIC_VIEWPORT;
+         info.out[i].sn = TGSI_SEMANTIC_VIEWPORTINDEX;
          break;
       case D3D_NAME_PRIMITIVE_ID:
          info.out[i].sn = TGSI_SEMANTIC_PRIMID;
@@ -1320,14 +1323,14 @@ Converter::saveDst(const sm4_op &op, int c, Value *value, int s)
 void
 Converter::handleSAMPLE(operation opr, Value *dst0[4])
 {
-   TexInstruction *texi = new_TexInstruction(prog, opr);
+   TexInstruction *texi = new_TexInstruction(func, opr);
    unsigned int c, d, s;
    Value *arg[4], *src0[4];
    Value *val;
    Value *lod = NULL, *dc = NULL;
 
-   const int tR = insn->ops[2].indices[0].disp;
-   const int tS = insn->ops[3].indices[0].disp;
+   const int tR = insn->ops[2]->indices[0].disp;
+   const int tS = insn->ops[3]->indices[0].disp;
 
    TexInstruction::Target tgt = resourceType[tR][shadow[tS] ? 1 : 0];
 
@@ -1342,7 +1345,7 @@ Converter::handleSAMPLE(operation opr, Value *dst0[4])
        insn->opcode == SM4_OPCODE_SAMPLE_C_LZ) {
       dc = src(3, 0);
       if (insn->opcode == SM4_OPCODE_SAMPLE_C_LZ)
-         texi->levelZero = true;
+         texi->tex.levelZero = true;
    } else
    if (insn->opcode == SM4_OPCODE_SAMPLE_D) {
       for (c = 0; c < tgt.getDim(); ++c) {
@@ -1359,18 +1362,18 @@ Converter::handleSAMPLE(operation opr, Value *dst0[4])
       mkOp2(OP_MAX, TYPE_F32, val, src0[2], val);
       mkOp1(OP_RCP, TYPE_F32, val, val);
       for (c = 0; c < 3; ++c)
-         src[c] = mkOp2v(OP_MUL, TYPE_F32, getSSA(), arg[c], val);
+         src0[c] = mkOp2v(OP_MUL, TYPE_F32, getSSA(), arg[c], val);
    }
 
    for (c = 0, d = 0; c < 4; ++c) {
       if (dst0[c]) {
-         texi->setDef(d++, dst[c]);
+         texi->setDef(d++, dst0[c]);
          texi->tex.mask |= 1 << c;
       }
    }
 
    for (s = 0; s < tgt.getArgCount(); ++s)
-      texi->setSrc(s, src[s]);
+      texi->setSrc(s, src0[s]);
    if (lod)
       texi->setSrc(s++, lod);
    if (dc)
@@ -1397,6 +1400,17 @@ Converter::handleDP(Value *dst0[4], int dim)
       dst0[c] = dotp;
 }
 
+void
+Converter::insertConvergenceOps(BasicBlock *conv, BasicBlock *fork)
+{
+   FlowInstruction *join = new_FlowInstruction(func, OP_JOIN, NULL);
+   join->fixed = 1;
+   conv->insertHead(join);
+
+   fork->joinAt = new_FlowInstruction(func, OP_JOINAT, conv);
+   fork->insertBefore(fork->getExit(), fork->joinAt);
+}
+
 #define FOR_EACH_DST0_ENABLED_CHANNEL32(chan)         \
    for ((chan) = 0; (chan) < 4; ++(chan))             \
       if (insn->ops[0].get()->mask & (1 << (chan)))
@@ -1410,11 +1424,20 @@ Converter::checkDstSrcAliasing() const
 {
    return false;
 
-   for (int d = 0; d < nDstOpnds; ++d) {
-      for (int s = 0; s < nSrcOpnds; ++s) {
-         
+   for (unsigned int d = 0; d < nDstOpnds; ++d) {
+      for (unsigned int s = nDstOpnds; s < insn->num_ops; ++s) {
+         if (insn->ops[d]->file != insn->ops[s]->file)
+            continue;
+         int i = insn->ops[s]->num_indices - 1;
+         if (i != insn->ops[d]->num_indices - 1)
+            continue;
+         if (insn->ops[d]->is_index_simple(i) &&
+             insn->ops[s]->is_index_simple(i) &&
+             insn->ops[d]->indices[i].disp == insn->ops[s]->indices[i].disp)
+            return true;
       }
    }
+   return false;
 }
 
 bool
@@ -1583,7 +1606,7 @@ Converter::handleInstruction(unsigned int pos)
    {
       Instruction *cut = mkOp1(OP_EMIT, TYPE_U32, NULL,  mkImm(0));
       cut->fixed = 1;
-      cut->restart = 1;
+      cut->subOp = NV50_IR_SUBOP_EMIT_RESTART;
    }
       break;
 
@@ -1638,20 +1661,20 @@ Converter::handleInstruction(unsigned int pos)
    case SM4_OPCODE_ENDIF:
    {
       BasicBlock *convPoint = new BasicBlock(func);
-      BasicBlock *lastClause = reinterpret_cast<BasicBlock *>(condBBs.pop().u.p);
+      BasicBlock *lastBB = reinterpret_cast<BasicBlock *>(condBBs.pop().u.p);
       BasicBlock *forkPoint = reinterpret_cast<BasicBlock *>(joinBBs.pop().u.p);
 
       if (!bb->isTerminated()) {
          // we only want join if none of the clauses ended with CONT/BREAK/RET
-         if (prevClause->getExit()->op == OP_BRA && joinBBs.getSize() < 6)
+         if (lastBB->getExit()->op == OP_BRA && joinBBs.getSize() < 6)
             insertConvergenceOps(convPoint, forkPoint);
          mkFlow(OP_BRA, convPoint, CC_ALWAYS, NULL);
          bb->cfg.attach(&convPoint->cfg, Graph::Edge::FORWARD);
       }
 
-      if (prevClause->getExit()->op == OP_BRA) {
-         prevClause->cfg.attach(&convPoint->cfg, Graph::Edge::FORWARD);
-         prevClause->getExit()->asFlow()->target.bb = convPoint;
+      if (lastBB->getExit()->op == OP_BRA) {
+         lastBB->cfg.attach(&convPoint->cfg, Graph::Edge::FORWARD);
+         lastBB->getExit()->asFlow()->target.bb = convPoint;
       }
       setPosition(convPoint, true);
    }
