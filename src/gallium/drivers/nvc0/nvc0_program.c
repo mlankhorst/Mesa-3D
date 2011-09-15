@@ -124,7 +124,8 @@ nvc0_sp_assign_input_slots(struct nv50_ir_prog_info *info)
       for (c = 0; c < 4; ++c)
          info->in[i].slot[c] = (offset + c * 0x4) / 4;
 
-      nvc0_mesa_varying_hack(&info->in[i]);
+      if (info->bin.sourceRep == NV50_PROGRAM_IR_TGSI)
+         nvc0_mesa_varying_hack(&info->in[i]);
    }
 
    return 0;
@@ -166,7 +167,8 @@ nvc0_sp_assign_output_slots(struct nv50_ir_prog_info *info)
       for (c = 0; c < 4; ++c)
          info->out[i].slot[c] = (offset + c * 0x4) / 4;
 
-      nvc0_mesa_varying_hack(&info->out[i]);
+      if (info->bin.sourceRep == NV50_PROGRAM_IR_TGSI)
+         nvc0_mesa_varying_hack(&info->out[i]);
    }
 
    return 0;
