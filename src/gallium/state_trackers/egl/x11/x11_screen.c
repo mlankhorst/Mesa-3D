@@ -290,7 +290,7 @@ x11_screen_enable_dri2(struct x11_screen *xscr,
          close(fd);
          return -1;
       }
-      if (xscr->glx_dpy->xscr) {
+      if (xscr->glx_dpy->xscr && 0 /* fuck off */) {
          _eglLog(_EGL_WARNING,
                "display is already managed by another x11 screen");
          close(fd);
