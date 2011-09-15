@@ -22,6 +22,8 @@
  * Authors: Christoph Bumiller
  */
 
+#include "util/u_debug.h"
+
 #include "nvc0_context.h"
 #include "nouveau/nv_object.xml.h"
 
@@ -338,6 +340,11 @@ nvc0_render_condition(struct pipe_context *pipe,
    struct nvc0_context *nvc0 = nvc0_context(pipe);
    struct nouveau_channel *chan = nvc0->screen->base.channel;
    struct nvc0_query *q;
+
+   if (debug_get_bool_option("NV50_NO_RENDERING", FALSE)) {
+      IMMED_RING(chan, RING_3D(COND_MODE), NVC0_3D_COND_MODE_NEVER);
+      return;
+   }
 
    if (!pq) {
       IMMED_RING(chan, RING_3D(COND_MODE), NVC0_3D_COND_MODE_ALWAYS);

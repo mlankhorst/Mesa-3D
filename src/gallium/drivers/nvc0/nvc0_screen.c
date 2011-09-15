@@ -628,8 +628,8 @@ nvc0_screen_create(struct pipe_winsys *ws, struct nouveau_device *dev)
    OUT_RING  (chan, 1);
 
    BEGIN_RING(chan, RING_3D(VERTEX_RUNOUT_ADDRESS_HIGH), 2);
-   OUT_RING  (chan, 0xab);
-   OUT_RING  (chan, 0x00000000);
+   OUT_RELOCh(chan, screen->vfetch_cache, 0, NOUVEAU_BO_VRAM | NOUVEAU_BO_RDWR);
+   OUT_RELOCl(chan, screen->vfetch_cache, 0, NOUVEAU_BO_VRAM | NOUVEAU_BO_RDWR);
 
    FIRE_RING (chan);
 
