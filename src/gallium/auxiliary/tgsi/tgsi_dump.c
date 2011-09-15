@@ -170,9 +170,11 @@ const char *tgsi_property_names[TGSI_PROPERTY_COUNT] =
    "GS_INPUT_PRIMITIVE",
    "GS_OUTPUT_PRIMITIVE",
    "GS_MAX_OUTPUT_VERTICES",
+   "GS_INSTANCE_COUNT",
    "FS_COORD_ORIGIN",
    "FS_COORD_PIXEL_CENTER",
    "FS_COLOR0_WRITES_ALL_CBUFS",
+   "DS_PARTITIONING"
 };
 
 static const char *tgsi_type_names[] =
@@ -199,7 +201,8 @@ const char *tgsi_primitive_names[PIPE_PRIM_MAX] =
    "LINES_ADJACENCY",
    "LINE_STRIP_ADJACENCY",
    "TRIANGLES_ADJACENCY",
-   "TRIANGLE_STRIP_ADJACENCY"
+   "TRIANGLE_STRIP_ADJACENCY",
+   "PATCHES"
 };
 
 const char *tgsi_fs_coord_origin_names[2] =
@@ -212,6 +215,14 @@ const char *tgsi_fs_coord_pixel_center_names[2] =
 {
    "HALF_INTEGER",
    "INTEGER"
+};
+
+const char *tgsi_ds_partitioning_names[4] =
+{
+   "FRACT_ODD",
+   "FRACT_EVEN",
+   "INTEGER",
+   "POW2"
 };
 
 
@@ -539,6 +550,8 @@ iter_property(
       case TGSI_PROPERTY_FS_COORD_PIXEL_CENTER:
          ENM(prop->u[i].Data, tgsi_fs_coord_pixel_center_names);
          break;
+      case TGSI_PROPERTY_DS_PARTITIONING:
+         ENM(prop->u[i].Data, tgsi_ds_partitioning_names);
       default:
          SID( prop->u[i].Data );
          break;
