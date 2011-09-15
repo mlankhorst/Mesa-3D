@@ -271,7 +271,7 @@ struct sm4_op
 		memset(this, 0, sizeof(*this));
 	}
 
-	void dump();
+	void dump() const;
 
 private:
 	sm4_op(const sm4_op& op)
@@ -296,7 +296,7 @@ struct sm4_insn : public sm4_token_instruction
 		memset(this, 0, sizeof(*this));
 	}
 
-	void dump();
+	void dump() const;
 
 private:
 	sm4_insn(const sm4_insn& op)
@@ -344,7 +344,7 @@ struct sm4_dcl : public sm4_token_instruction
 		free(data);
 	}
 
-	void dump();
+	void dump() const;
 
 private:
 	sm4_dcl(const sm4_dcl& op)
@@ -410,7 +410,7 @@ struct sm4_program
 			free(params_out);
 	}
 
-	void dump();
+	void dump() const;
 
 private:
 	sm4_program(const sm4_dcl& op)

@@ -201,22 +201,22 @@ std::ostream& operator <<(std::ostream& out, const sm4_program& program)
 	return out;
 }
 
-void sm4_op::dump()
+void sm4_op::dump() const
 {
 	std::cout << *this;
 }
 
-void sm4_insn::dump()
+void sm4_insn::dump() const
 {
 	std::cout << *this;
 }
 
-void sm4_dcl::dump()
+void sm4_dcl::dump() const
 {
 	std::cout << *this;
 }
 
-void sm4_program::dump()
+void sm4_program::dump() const
 {
 	std::cout << *this;
 }
