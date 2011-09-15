@@ -1222,45 +1222,58 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 		if (sig)
 			sm4->params_out_num = dxbc_parse_signature(sig, &sm4->params_out);
 
-		struct pipe_shader_state tgsi_shader;
-		memset(&tgsi_shader, 0, sizeof(tgsi_shader));
-		tgsi_shader.tokens = (const tgsi_token*)sm4_to_tgsi(*sm4);
-		if(!tgsi_shader.tokens)
-			return 0;
+		struct pipe_shader_state pipe_shader;
+		memset(&pipe_shader, 0, sizeof(pipe_shader));
 
-		if(dump)
-			tgsi_dump(tgsi_shader.tokens, 0);
+		void* shader_cso = 0;
 
-		void* shader_cso;
+		if (screen->get_param(screen, PIPE_CAP_SHADER_IR) & (1 << PIPE_SHADER_IR_SM4)) {
+			pipe_shader.tokens = 0;
+			pipe_shader.representation = PIPE_SHADER_IR_SM4;
+			pipe_shader.ir = sm4.release();
+			shader_cso = immediate_pipe->create_program(immediate_pipe, type, PIPE_SHADER_IR_SM4,
+								    pipe_shader.ir);
+		} else {
+			pipe_shader.representation = PIPE_SHADER_IR_TGSI;
+			pipe_shader.tokens = (const tgsi_token*)sm4_to_tgsi(*sm4);
+			if(!pipe_shader.tokens)
+				return 0;
+			if(dump)
+				tgsi_dump(pipe_shader.tokens, 0);
+		}
+
 		GalliumD3D11Shader<>* shader;
 
 		switch(type)
 		{
 		case PIPE_SHADER_VERTEX:
-			shader_cso = immediate_pipe->create_vs_state(immediate_pipe, &tgsi_shader);
+			if (!shader_cso)
+				shader_cso = immediate_pipe->create_vs_state(immediate_pipe, &pipe_shader);
 			shader = (GalliumD3D11Shader<>*)new GalliumD3D11VertexShader(this, shader_cso);
 			break;
 		case PIPE_SHADER_FRAGMENT:
-			shader_cso = immediate_pipe->create_fs_state(immediate_pipe, &tgsi_shader);
+			if (!shader_cso)
+				shader_cso = immediate_pipe->create_fs_state(immediate_pipe, &pipe_shader);
 			shader = (GalliumD3D11Shader<>*)new GalliumD3D11PixelShader(this, shader_cso);
 			break;
 		case PIPE_SHADER_GEOMETRY:
-			shader_cso = immediate_pipe->create_gs_state(immediate_pipe, &tgsi_shader);
+			if (!shader_cso)
+				shader_cso = immediate_pipe->create_gs_state(immediate_pipe, &pipe_shader);
 			shader = (GalliumD3D11Shader<>*)new GalliumD3D11GeometryShader(this, shader_cso);
 			break;
 		default:
-			shader_cso = 0;
 			shader = 0;
 			break;
 		}
 
-		if(shader)
+		if(sm4.get() && shader)
 		{
 			shader->slot_to_resource = sm4->slot_to_resource;
 			shader->slot_to_sampler = sm4->slot_to_sampler;
 		}
 
-		free((void*)tgsi_shader.tokens);
+		if (pipe_shader.tokens)
+			free((void*)pipe_shader.tokens);
 		return shader;
 	}
 
