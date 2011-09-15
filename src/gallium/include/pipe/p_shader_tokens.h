@@ -149,10 +149,10 @@ struct tgsi_declaration_dimension
 #define TGSI_SEMANTIC_CLIPDISTANCE 13
 #define TGSI_SEMANTIC_TESSFACTOR   14
 #define TGSI_SEMANTIC_TESSCOORD    15
-#define TGSI_SEMANTIC_LAYER        18
-#define TGSI_SEMANTIC_VIEWPORTINDEX 19
-#define TGSI_SEMANTIC_SAMPLEMASK 16
-#define TGSI_SEMANTIC_STENCIL    17
+#define TGSI_SEMANTIC_LAYER        16
+#define TGSI_SEMANTIC_VIEWPORTINDEX 17
+#define TGSI_SEMANTIC_SAMPLEMASK 18
+#define TGSI_SEMANTIC_STENCIL    19
 #define TGSI_SEMANTIC_COUNT      20 /**< number of semantic values */
 
 struct tgsi_declaration_semantic

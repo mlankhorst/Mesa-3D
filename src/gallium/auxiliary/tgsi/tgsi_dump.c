@@ -126,8 +126,16 @@ static const char *semantic_names[] =
    "NORMAL",
    "FACE",
    "EDGEFLAG",
-   "PRIM_ID",
+   "PRIMID",
    "INSTANCEID",
+   "VERTEXID",
+   "INVOCATIONID",
+   "CLIPDISTANCE",
+   "TESSFACTOR",
+   "TESSCOORD",
+   "LAYER",
+   "VIEWPORTINDEX",
+   "SAMPLEMASK",
    "STENCIL"
 };
 
