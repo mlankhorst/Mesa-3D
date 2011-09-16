@@ -164,7 +164,12 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 			caps.stages_with_sampling &=~ (1 << PIPE_SHADER_FRAGMENT);
 		if(!pipe->set_vertex_sampler_views)
 			caps.stages_with_sampling &=~ (1 << PIPE_SHADER_VERTEX);
-
+#if API >= 11
+		if(!pipe->set_hull_sampler_views)
+			caps.stages_with_sampling &=~ (1 << PIPE_SHADER_HULL);
+		if(!pipe->set_domain_sampler_views)
+			caps.stages_with_sampling &=~ (1 << PIPE_SHADER_DOMAIN);
+#endif
 		update_flags = 0;
 
 		// pipeline state
@@ -342,6 +347,14 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 			case PIPE_SHADER_GEOMETRY:
 				pipe->bind_gs_state(pipe, shader_cso);
 				break;
+#if API >= 11
+			case PIPE_SHADER_HULL:
+				pipe->bind_hs_state(pipe, shader_cso);
+				break;
+			case PIPE_SHADER_DOMAIN:
+				pipe->bind_ds_state(pipe, shader_cso);
+				break;
+#endif
 			}
 			update_flags |= (1 << (UPDATE_SAMPLERS_SHIFT + s)) | (1 << (UPDATE_VIEWS_SHIFT + s));
 		}
@@ -526,6 +539,14 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 				case PIPE_SHADER_GEOMETRY:
 					pipe->set_geometry_sampler_views(pipe, num_views_to_bind, sampler_views[s]);
 					break;
+#if API >= 11
+				case PIPE_SHADER_HULL:
+					pipe->set_hull_sampler_views(pipe, num_views_to_bind, sampler_views[s]);
+					break;
+				case PIPE_SHADER_DOMAIN:
+					pipe->set_domain_sampler_views(pipe, num_views_to_bind, sampler_views[s]);
+					break;
+#endif
 				}
 			}
 		}
@@ -548,6 +569,14 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 				case PIPE_SHADER_GEOMETRY:
 					pipe->bind_geometry_sampler_states(pipe, num_samplers_to_bind, sampler_csos[s].v);
 					break;
+#if API >= 11
+				case PIPE_SHADER_HULL:
+					pipe->bind_hull_sampler_states(pipe, num_samplers_to_bind, sampler_csos[s].v);
+					break;
+				case PIPE_SHADER_DOMAIN:
+					pipe->bind_domain_sampler_states(pipe, num_samplers_to_bind, sampler_csos[s].v);
+					break;
+#endif
 				}
 			}
 		}
@@ -1628,6 +1657,12 @@ changed:
 		pipe->bind_vs_state(pipe, shaders[D3D11_STAGE_VS].p ? shaders[D3D11_STAGE_VS].p->object : default_shaders[PIPE_SHADER_VERTEX]);
 		if(caps.gs)
 			pipe->bind_gs_state(pipe, shaders[D3D11_STAGE_GS].p ? shaders[D3D11_STAGE_GS].p->object : default_shaders[PIPE_SHADER_GEOMETRY]);
+#if API >= 11
+		if(caps.hs) {
+			pipe->bind_hs_state(pipe, shaders[D3D11_STAGE_HS].p ? shaders[D3D11_STAGE_HS].p->object : default_shaders[PIPE_SHADER_HULL]);
+			pipe->bind_ds_state(pipe, shaders[D3D11_STAGE_DS].p ? shaders[D3D11_STAGE_DS].p->object : default_shaders[PIPE_SHADER_DOMAIN]);
+		}
+#endif
 		set_framebuffer();
 		set_viewport();
 		set_clip();
@@ -1651,6 +1686,10 @@ changed:
 		GalliumD3D11ShaderResourceView* view = (GalliumD3D11ShaderResourceView*)shader_resource_view;
 		if(caps.gs)
 			pipe->bind_gs_state(pipe, 0);
+		if(caps.hs)
+			pipe->bind_hs_state(pipe, 0);
+		if(caps.ds)
+			pipe->bind_ds_state(pipe, 0);
 		if(caps.so)
 			pipe->bind_stream_output_state(pipe, 0);
 		if(pipe->render_condition)

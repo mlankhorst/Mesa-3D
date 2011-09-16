@@ -121,6 +121,8 @@ struct GalliumD3D11Caps
 {
 	bool so;
 	bool gs;
+	bool hs;
+	bool ds;
 	bool queries;
 	bool render_condition;
 	unsigned constant_buffers[D3D11_STAGES];

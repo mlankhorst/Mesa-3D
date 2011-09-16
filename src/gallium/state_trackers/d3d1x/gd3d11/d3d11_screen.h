@@ -104,6 +104,8 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 	{
 		memset(&screen_caps, 0, sizeof(screen_caps));
 		screen_caps.gs = screen->get_shader_param(screen, PIPE_SHADER_GEOMETRY, PIPE_SHADER_CAP_MAX_INSTRUCTIONS) > 0;
+		screen_caps.hs = screen->get_shader_param(screen, PIPE_SHADER_HULL, PIPE_SHADER_CAP_MAX_INSTRUCTIONS) > 0;
+		screen_caps.ds = screen->get_shader_param(screen, PIPE_SHADER_DOMAIN, PIPE_SHADER_CAP_MAX_INSTRUCTIONS) > 0;
 		screen_caps.so = !!screen->get_param(screen, PIPE_CAP_STREAM_OUTPUT);
 		screen_caps.queries = screen->get_param(screen, PIPE_CAP_OCCLUSION_QUERY);
 		screen_caps.render_condition = screen_caps.queries;
@@ -1261,6 +1263,18 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 				shader_cso = immediate_pipe->create_gs_state(immediate_pipe, &pipe_shader);
 			shader = (GalliumD3D11Shader<>*)new GalliumD3D11GeometryShader(this, shader_cso);
 			break;
+#if API >= 11
+		case PIPE_SHADER_HULL:
+         if (!shader_cso)
+            shader_cso = immediate_pipe->create_hs_state(immediate_pipe, &pipe_shader);
+			shader = (GalliumD3D11Shader<>*)new GalliumD3D11HullShader(this, shader_cso);
+			break;
+		case PIPE_SHADER_DOMAIN:
+         if (!shader_cso)
+            shader_cso = immediate_pipe->create_ds_state(immediate_pipe, &pipe_shader);
+			shader = (GalliumD3D11Shader<>*)new GalliumD3D11DomainShader(this, shader_cso);
+			break;
+#endif
 		default:
 			shader = 0;
 			break;
@@ -1323,8 +1337,8 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 	IMPLEMENT_CREATE_SHADER(Pixel, FRAGMENT)
 	IMPLEMENT_CREATE_SHADER(Geometry, GEOMETRY)
 #if API >= 11
-	IMPLEMENT_NOTIMPL_CREATE_SHADER(Hull)
-	IMPLEMENT_NOTIMPL_CREATE_SHADER(Domain)
+	IMPLEMENT_CREATE_SHADER(Hull, HULL)
+	IMPLEMENT_CREATE_SHADER(Domain, DOMAIN)
 	IMPLEMENT_NOTIMPL_CREATE_SHADER(Compute)
 #endif
 

@@ -121,8 +121,8 @@ IMPLEMENT_VIEW_DTOR(DepthStencilView, surface)
 
 #if API >= 11
 // IMPLEMENT_VIEW_DTOR(UnorderedAccessView, surface);
-// IMPLEMENT_OBJECT_DTOR(HullShader, tcs);
-// IMPLEMENT_OBJECT_DTOR(DomainShader, tes);
+IMPLEMENT_OBJECT_DTOR(HullShader, hs);
+IMPLEMENT_OBJECT_DTOR(DomainShader, ds);
 // IMPLEMENT_OBJECT_DTOR(ComputeShader, cs);
 #else
 IMPLEMENT_OBJECT_DTOR(BlendState1, blend)
@@ -229,11 +229,9 @@ typedef GalliumD3D11Shader<ID3D11GeometryShader> GalliumD3D11GeometryShader;
 typedef GalliumD3D11Shader<ID3D11PixelShader> GalliumD3D11PixelShader;
 
 #if API >= 11
-/*
 typedef GalliumD3D11Shader<ID3D11HullShader> GalliumD3D11HullShader;
 typedef GalliumD3D11Shader<ID3D11DomainShader> GalliumD3D11DomainShader;
-typedef GalliumD3D11Shader<ID3D11ComputeShader> GalliumD3D11ComputeShader;
-*/
+// typedef GalliumD3D11Shader<ID3D11ComputeShader> GalliumD3D11ComputeShader;
 #endif
 
 template<typename Base = ID3D11Resource>
