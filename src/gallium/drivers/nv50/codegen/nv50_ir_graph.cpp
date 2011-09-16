@@ -150,8 +150,11 @@ void Graph::Node::cut()
    while (in)
       delete in;
 
-   if (graph && graph->root == this)
-      graph->root = NULL;
+   if (graph) {
+      if (graph->root == this)
+         graph->root = NULL;
+      graph = NULL;
+   }
 }
 
 Graph::Edge::Edge(Node *org, Node *tgt, Type kind)
