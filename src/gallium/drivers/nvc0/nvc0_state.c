@@ -426,6 +426,18 @@ nvc0_vp_sampler_states_bind(struct pipe_context *pipe, unsigned nr, void **s)
 }
 
 static void
+nvc0_tcp_sampler_states_bind(struct pipe_context *pipe, unsigned nr, void **s)
+{
+   nvc0_stage_sampler_states_bind(nvc0_context(pipe), 1, nr, s);
+}
+
+static void
+nvc0_tep_sampler_states_bind(struct pipe_context *pipe, unsigned nr, void **s)
+{
+   nvc0_stage_sampler_states_bind(nvc0_context(pipe), 2, nr, s);
+}
+
+static void
 nvc0_fp_sampler_states_bind(struct pipe_context *pipe, unsigned nr, void **s)
 {
    nvc0_stage_sampler_states_bind(nvc0_context(pipe), 4, nr, s);
@@ -486,6 +498,22 @@ nvc0_vp_set_sampler_views(struct pipe_context *pipe,
                           struct pipe_sampler_view **views)
 {
    nvc0_stage_set_sampler_views(nvc0_context(pipe), 0, nr, views);
+}
+
+static void
+nvc0_tcp_set_sampler_views(struct pipe_context *pipe,
+                           unsigned nr,
+                           struct pipe_sampler_view **views)
+{
+   nvc0_stage_set_sampler_views(nvc0_context(pipe), 1, nr, views);
+}
+
+static void
+nvc0_tep_set_sampler_views(struct pipe_context *pipe,
+                           unsigned nr,
+                           struct pipe_sampler_view **views)
+{
+   nvc0_stage_set_sampler_views(nvc0_context(pipe), 2, nr, views);
 }
 
 static void
@@ -633,6 +661,38 @@ nvc0_gp_state_bind(struct pipe_context *pipe, void *hwcso)
     nvc0->dirty |= NVC0_NEW_GMTYPROG;
 }
 
+static void *
+nvc0_tcp_state_create(struct pipe_context *pipe,
+                      const struct pipe_shader_state *cso)
+{
+   return nvc0_sp_state_create(pipe, cso, PIPE_SHADER_HULL);
+}
+
+static void
+nvc0_tcp_state_bind(struct pipe_context *pipe, void *hwcso)
+{
+    struct nvc0_context *nvc0 = nvc0_context(pipe);
+
+    nvc0->tctlprog = hwcso;
+    nvc0->dirty |= NVC0_NEW_TCTLPROG;
+}
+
+static void *
+nvc0_tep_state_create(struct pipe_context *pipe,
+                      const struct pipe_shader_state *cso)
+{
+   return nvc0_sp_state_create(pipe, cso, PIPE_SHADER_DOMAIN);
+}
+
+static void
+nvc0_tep_state_bind(struct pipe_context *pipe, void *hwcso)
+{
+    struct nvc0_context *nvc0 = nvc0_context(pipe);
+
+    nvc0->tevlprog = hwcso;
+    nvc0->dirty |= NVC0_NEW_TEVLPROG;
+}
+
 static void
 nvc0_set_constant_buffer(struct pipe_context *pipe, uint shader, uint index,
                          struct pipe_resource *res)
@@ -640,11 +700,9 @@ nvc0_set_constant_buffer(struct pipe_context *pipe, uint shader, uint index,
    struct nvc0_context *nvc0 = nvc0_context(pipe);
 
    switch (shader) {
-   case PIPE_SHADER_VERTEX: shader = 0; break;
-      /*
-   case PIPE_SHADER_TESSELLATION_CONTROL: shader = 1; break;
-   case PIPE_SHADER_TESSELLATION_EVALUATION: shader = 2; break;
-      */
+   case PIPE_SHADER_VERTEX:   shader = 0; break;
+   case PIPE_SHADER_HULL:     shader = 1; break;
+   case PIPE_SHADER_DOMAIN:   shader = 2; break;
    case PIPE_SHADER_GEOMETRY: shader = 3; break;
    case PIPE_SHADER_FRAGMENT: shader = 4; break;
    default:
@@ -884,24 +942,34 @@ nvc0_init_state_functions(struct nvc0_context *nvc0)
    pipe->create_sampler_state = nv50_sampler_state_create;
    pipe->delete_sampler_state = nvc0_sampler_state_delete;
    pipe->bind_vertex_sampler_states   = nvc0_vp_sampler_states_bind;
+   pipe->bind_hull_sampler_states     = nvc0_tcp_sampler_states_bind;
+   pipe->bind_domain_sampler_states   = nvc0_tep_sampler_states_bind;
    pipe->bind_fragment_sampler_states = nvc0_fp_sampler_states_bind;
    pipe->bind_geometry_sampler_states = nvc0_gp_sampler_states_bind;
 
    pipe->create_sampler_view = nvc0_create_sampler_view;
    pipe->sampler_view_destroy = nvc0_sampler_view_destroy;
    pipe->set_vertex_sampler_views   = nvc0_vp_set_sampler_views;
+   pipe->set_hull_sampler_views     = nvc0_tcp_set_sampler_views;
+   pipe->set_domain_sampler_views   = nvc0_tep_set_sampler_views;
    pipe->set_fragment_sampler_views = nvc0_fp_set_sampler_views;
    pipe->set_geometry_sampler_views = nvc0_gp_set_sampler_views;
 
    pipe->create_vs_state = nvc0_vp_state_create;
-   pipe->create_fs_state = nvc0_fp_state_create;
+   pipe->create_hs_state = nvc0_tcp_state_create;
+   pipe->create_ds_state = nvc0_tep_state_create;
    pipe->create_gs_state = nvc0_gp_state_create;
+   pipe->create_fs_state = nvc0_fp_state_create;
    pipe->bind_vs_state = nvc0_vp_state_bind;
-   pipe->bind_fs_state = nvc0_fp_state_bind;
+   pipe->bind_hs_state = nvc0_tcp_state_bind;
+   pipe->bind_ds_state = nvc0_tep_state_bind;
    pipe->bind_gs_state = nvc0_gp_state_bind;
+   pipe->bind_fs_state = nvc0_fp_state_bind;
    pipe->delete_vs_state = nvc0_sp_state_delete;
-   pipe->delete_fs_state = nvc0_sp_state_delete;
+   pipe->delete_hs_state = nvc0_sp_state_delete;
+   pipe->delete_ds_state = nvc0_sp_state_delete;
    pipe->delete_gs_state = nvc0_sp_state_delete;
+   pipe->delete_fs_state = nvc0_sp_state_delete;
 
    pipe->create_program = nvc0_create_program;
    pipe->bind_program = nvc0_bind_program;
