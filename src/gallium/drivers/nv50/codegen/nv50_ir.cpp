@@ -926,6 +926,10 @@ extern "C" {
 static void
 nv50_ir_init_prog_info(struct nv50_ir_prog_info *info)
 {
+   if (info->type == PIPE_SHADER_HULL || info->type == PIPE_SHADER_DOMAIN) {
+      info->prop.tp.domain = PIPE_PRIM_MAX;
+      info->prop.tp.outputPrim = PIPE_PRIM_MAX;
+   }
    info->io.clipDistance = 0xff;
    info->io.pointSize = 0xff;
    info->io.edgeFlagIn = 0xff;
@@ -949,8 +953,8 @@ nv50_ir_generate_code(struct nv50_ir_prog_info *info)
 
    switch (info->type) {
    PROG_TYPE_CASE(VERTEX, VERTEX);
-// PROG_TYPE_CASE(HULL, TESSELLATION_CONTROL);
-// PROG_TYPE_CASE(DOMAIN, TESSELLATION_EVAL);
+   PROG_TYPE_CASE(HULL, TESSELLATION_CONTROL);
+   PROG_TYPE_CASE(DOMAIN, TESSELLATION_EVAL);
    PROG_TYPE_CASE(GEOMETRY, GEOMETRY);
    PROG_TYPE_CASE(FRAGMENT, FRAGMENT);
    default:

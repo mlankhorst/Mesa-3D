@@ -5,6 +5,8 @@
 
 #include "nv50_ir_from_sm4.h"
 
+// WTF: pass-through is implicit ??? check ReadWriteMask
+
 namespace tgsi {
 
 static nv50_ir::SVSemantic irSemantic(unsigned sn)
@@ -480,10 +482,36 @@ Converter::getDstOpndCount(enum sm4_opcode opcode) const
 {
    switch (opcode) {
    case SM4_OPCODE_SINCOS:
+   case SM4_OPCODE_UDIV:
+   case SM4_OPCODE_UMUL:
       return 2;
-   case SM4_OPCODE_DISCARD:
+   case SM4_OPCODE_BREAK:
    case SM4_OPCODE_BREAKC:
+   case SM4_OPCODE_CALL:
+   case SM4_OPCODE_CALLC:
+   case SM4_OPCODE_CONTINUE:
    case SM4_OPCODE_CONTINUEC:
+   case SM4_OPCODE_DISCARD:
+   case SM4_OPCODE_EMIT:
+   case SM4_OPCODE_EMIT_STREAM:
+   case SM4_OPCODE_CUT:
+   case SM4_OPCODE_CUT_STREAM:
+   case SM4_OPCODE_EMITTHENCUT:
+   case SM4_OPCODE_EMITTHENCUT_STREAM:
+   case SM4_OPCODE_IF:
+   case SM4_OPCODE_ELSE:
+   case SM4_OPCODE_ENDIF:
+   case SM4_OPCODE_LOOP:
+   case SM4_OPCODE_ENDLOOP:
+   case SM4_OPCODE_RET:
+   case SM4_OPCODE_RETC:
+   case SM4_OPCODE_SYNC:
+   case SM4_OPCODE_SWITCH:
+   case SM4_OPCODE_CASE:
+   case SM4_OPCODE_HS_DECLS:
+   case SM4_OPCODE_HS_CONTROL_POINT_PHASE:
+   case SM4_OPCODE_HS_FORK_PHASE:
+   case SM4_OPCODE_HS_JOIN_PHASE:
       return 0;
    default:
       return 1;
@@ -645,7 +673,7 @@ Converter::parseSignature()
 
    for (n = 0, i = 0; i < sm4.params_in_num; ++i) {
       info.in[i].id = i;
-      info.in[i].mask = sm4.params_in[i].Mask;
+      info.in[i].mask = sm4.params_in[i].ReadWriteMask;
       info.in[i].regular = 1;
       info.in[i].patch = 0;
 
@@ -692,6 +720,8 @@ Converter::parseSignature()
          break;
       case D3D_NAME_POSITION:
       case D3D_NAME_DEPTH:
+      case D3D_NAME_DEPTH_GREATER_EQUAL:
+      case D3D_NAME_DEPTH_LESS_EQUAL:
          info.out[i].sn = TGSI_SEMANTIC_POSITION;
          break;
       case D3D_NAME_CULL_DISTANCE:
@@ -716,8 +746,6 @@ Converter::parseSignature()
          break;
       case D3D_NAME_SAMPLE_INDEX:
       case D3D_NAME_COVERAGE:
-      case D3D_NAME_DEPTH_GREATER_EQUAL:
-      case D3D_NAME_DEPTH_LESS_EQUAL:
          assert(!"unsupported linkage semantic");
          break;
       default:
@@ -816,7 +844,12 @@ Converter::inspectDeclaration(const sm4_dcl& dcl)
    case SM4_OPCODE_DCL_INPUT_SGV:
    case SM4_OPCODE_DCL_INPUT_SIV:
    case SM4_OPCODE_DCL_INPUT:
-      // handled in parseSignature
+      if (dcl.op->file == SM4_FILE_INPUT_DOMAIN_POINT) {
+         idx = info.numInputs++;
+         info.in[idx].sn = TGSI_SEMANTIC_TESSCOORD;
+         info.in[idx].mask = dcl.op->mask;
+      }
+      // rest handled in parseSignature
       break;
    case SM4_OPCODE_DCL_OUTPUT_SGV:
    case SM4_OPCODE_DCL_OUTPUT_SIV:
@@ -834,7 +867,8 @@ Converter::inspectDeclaration(const sm4_dcl& dcl)
       nrArrays++;
       break;
    case SM4_OPCODE_DCL_GLOBAL_FLAGS:
-      info.prop.fp.earlyFragTests = dcl.dcl_global_flags.early_depth_stencil;
+      if (prog->getType() == Program::TYPE_FRAGMENT)
+         info.prop.fp.earlyFragTests = dcl.dcl_global_flags.early_depth_stencil;
       break;
 
    case SM4_OPCODE_DCL_FUNCTION_BODY:
@@ -879,9 +913,11 @@ Converter::inspectDeclaration(const sm4_dcl& dcl)
          info.prop.tp.domain = PIPE_PRIM_TRIANGLES;
          break;
       case D3D_TESSELLATOR_DOMAIN_QUAD:
+         info.prop.tp.domain = PIPE_PRIM_QUADS;
+         break;
       case D3D_TESSELLATOR_DOMAIN_UNDEFINED:
       default:
-         info.prop.tp.domain = PIPE_PRIM_QUADS;
+         info.prop.tp.domain = PIPE_PRIM_MAX;
          break;
       }
       break;
@@ -917,9 +953,11 @@ Converter::inspectDeclaration(const sm4_dcl& dcl)
          info.prop.tp.winding = -1;
          break;
       case D3D_TESSELLATOR_OUTPUT_POINT:
+         info.prop.tp.outputPrim = PIPE_PRIM_POINTS;
+         break;
       case D3D_TESSELLATOR_OUTPUT_UNDEFINED:
       default:
-         info.prop.tp.outputPrim = PIPE_PRIM_POINTS;
+         info.prop.tp.outputPrim = PIPE_PRIM_MAX;
          break;
       }
       break;
@@ -954,7 +992,6 @@ Converter::inspectDeclaration(const sm4_dcl& dcl)
       assert(!"invalid SM4 declaration");
       return false;
    }
-
    return true;
 }
 
@@ -1095,6 +1132,8 @@ Converter::dst(int i, int c)
 void
 Converter::saveDst(int i, int c, Value *value)
 {
+   if (insn->insn.sat)
+      mkOp1(OP_SAT, dTy, value, value);
    return saveDst(*insn->ops[i], c, value, i);
 }
 
@@ -1102,6 +1141,7 @@ Value *
 Converter::interpolate(const sm4_op& op, int c, int i)
 {
    int idx = op.indices[0].disp;
+   int swz = op.swizzle[c];
    operation opr =
       (info.in[idx].linear || info.in[idx].flat) ? OP_LINTERP : OP_PINTERP;
 
@@ -1110,7 +1150,7 @@ Converter::interpolate(const sm4_op& op, int c, int i)
    Instruction *insn = new_Instruction(func, opr, TYPE_F32);
 
    insn->setDef(0, getScratch());
-   insn->setSrc(0, iSym(idx, c));
+   insn->setSrc(0, iSym(idx, swz));
    if (opr == OP_PINTERP)
       insn->setSrc(1, fragCoord[3]);
    if (ptr)
@@ -1127,7 +1167,8 @@ Converter::src(const sm4_op& op, int c, int s)
 {
    const int size = typeSizeof(sTy);
 
-   Value *res, *ptr;
+   Instruction *ld;
+   Value *res, *ptr, *vtx;
    int idx, dim, off;
    const int swz = op.swizzle[c];
 
@@ -1158,12 +1199,16 @@ Converter::src(const sm4_op& op, int c, int s)
          idx = sm4.params_in_num;
 
       if (op.num_indices == 2) {
-         ptr = getVtxPtr(s);
+         vtx = getVtxPtr(s);
+         ptr = getSrcPtr(s, 1, 4);
          idx += op.indices[1].disp;
-         res = mkOp2v(OP_VFETCH, TYPE_U32, getSSA(), iSym(idx, swz), ptr);
+         res = getSSA();
+         ld = mkOp1(OP_VFETCH, TYPE_U32, res, iSym(idx, swz));
+         ld->setIndirect(0, 0, ptr);
+         ld->setIndirect(0, 1, vtx);
       } else {
          idx += op.indices[0].disp;
-         res = mkLoad(sTy, iSym(idx, swz), NULL);
+         res = mkLoad(sTy, iSym(idx, swz), getSrcPtr(s, 0, 4));
       }
       if (op.file == SM4_FILE_INPUT_PATCH_CONSTANT)
          res->defs->getInsn()->perPatch = 1;
@@ -1199,6 +1244,10 @@ Converter::src(const sm4_op& op, int c, int s)
    case SM4_FILE_OUTPUT_CONTROL_POINT_ID:
       res = mkOp1v(OP_RDSV, TYPE_U32, getSSA(), mkSysVal(SV_INVOCATION_ID, 0));
       break;
+   case SM4_FILE_CYCLE_COUNTER:
+      res =
+         mkOp1v(OP_RDSV, TYPE_U32, getSSA(), mkSysVal(SV_CLOCK, swz ? 1 : 0));
+      break;
    case SM4_FILE_INPUT_FORK_INSTANCE_ID:
    case SM4_FILE_INPUT_JOIN_INSTANCE_ID:
    {
@@ -1232,7 +1281,6 @@ Converter::src(const sm4_op& op, int c, int s)
       break;
    case SM4_FILE_FUNCTION_INPUT:
    case SM4_FILE_INPUT_THREAD_ID_IN_GROUP:
-   case SM4_FILE_CYCLE_COUNTER:
       assert(!"unhandled source file");
       return NULL;
    default:
@@ -1252,13 +1300,15 @@ Converter::dst(const sm4_op &op, int c, int i)
 {
    switch (op.file) {
    case SM4_FILE_TEMP:
-      return tData32.acquire(i, c);
+      return tData32.acquire(op.indices[0].disp, c);
    case SM4_FILE_INDEXABLE_TEMP:
       return getScratch();
    case SM4_FILE_OUTPUT:
       if (prog->getType() == Program::TYPE_FRAGMENT)
-         return oData.acquire(i, c);
+         return oData.acquire(op.indices[0].disp, c);
       return getScratch();
+   case SM4_FILE_NULL:
+      return NULL;
    case SM4_FILE_IMMEDIATE32:
    case SM4_FILE_IMMEDIATE64:
    case SM4_FILE_CONSTANT_BUFFER:
@@ -1288,6 +1338,7 @@ Converter::saveDst(const sm4_op &op, int c, Value *value, int s)
    case SM4_FILE_INDEXABLE_TEMP:
       a = op.indices[0].disp;
       idx = op.indices[1].disp;
+      // FIXME: shift is wrong, depends in lData
       lData[a].store(idx, c, getDstPtr(s, 1, 4), value);
       break;
    case SM4_FILE_OUTPUT:
@@ -1424,8 +1475,6 @@ Converter::insertConvergenceOps(BasicBlock *conv, BasicBlock *fork)
 bool
 Converter::checkDstSrcAliasing() const
 {
-   return false;
-
    for (unsigned int d = 0; d < nDstOpnds; ++d) {
       for (unsigned int s = nDstOpnds; s < insn->num_ops; ++s) {
          if (insn->ops[d]->file != insn->ops[s]->file)
@@ -1446,7 +1495,8 @@ bool
 Converter::handleInstruction(unsigned int pos)
 {
    Value *dst0[4], *rDst0[4];
-   int c;
+   Value *dst1[4], *rDst1[4];
+   int c, nc;
 
    insn = sm4.insns[pos];
    enum sm4_opcode opcode = static_cast<sm4_opcode>(insn->opcode);
@@ -1456,21 +1506,30 @@ Converter::handleInstruction(unsigned int pos)
    sTy = inferSrcType(opcode);
    dTy = inferDstType(opcode);
 
+   nc = dTy == TYPE_F64 ? 2 : 4;
+
    nDstOpnds = getDstOpndCount(opcode);
 
    bool useScratchDst = checkDstSrcAliasing();
 
-   if (prog->getTarget()->getOpInfo(op).hasDest && insn->ops[0].get()) {
-      for (c = 0; c < ((dTy == TYPE_F64) ? 2 : 4); ++c) {
-         if (!(insn->ops[0].get()->mask & (1 << c))) {
-            rDst0[c] = dst0[c] = NULL;
-            continue;
-         }
-         rDst0[c] = dst(0, c);
-         dst0[c] = (useScratchDst && rDst0[c]) ? getScratch() : rDst0[c];
-      }
-   } else {
-      memset(rDst0, 0, sizeof(rDst0));
+   // INFO("SM4_OPCODE_##%u, aliasing = %u\n", insn->opcode, useScratchDst);
+
+   if (nDstOpnds >= 1) {
+      for (c = 0; c < nc; ++c)
+         rDst0[c] = dst0[c] =
+            insn->ops[0].get()->mask & (1 << c) ? dst(0, c) : NULL;
+      if (useScratchDst)
+         for (c = 0; c < nc; ++c)
+            dst0[c] = rDst0[c] ? getScratch() : NULL;
+   }
+
+   if (nDstOpnds >= 2) {
+      for (c = 0; c < nc; ++c)
+         rDst1[c] = dst1[c] =
+            insn->ops[1].get()->mask & (1 << c) ? dst(1, c) : NULL;
+      if (useScratchDst)
+         for (c = 0; c < nc; ++c)
+            dst1[c] = rDst1[c] ? getScratch() : NULL;
    }
 
    switch (insn->opcode) {
@@ -1487,7 +1546,6 @@ Converter::handleInstruction(unsigned int pos)
    case SM4_OPCODE_MAX:
    case SM4_OPCODE_MUL:
    case SM4_OPCODE_OR:
-   case SM4_OPCODE_UDIV:
    case SM4_OPCODE_UMAX:
    case SM4_OPCODE_UMIN:
    case SM4_OPCODE_USHR:
@@ -1513,6 +1571,34 @@ Converter::handleInstruction(unsigned int pos)
          mkOp2(op, dTy, dst0[c], src(0, c), src(1, c));
       }
       break;
+
+   case SM4_OPCODE_UDIV:
+      for (c = 0; c < 4; ++c) {
+         Value *dvn, *dvs;
+         if (dst0[c] || dst1[c]) {
+            dvn = src(0, c);
+            dvs = src(1, c);
+         }
+         if (dst0[c])
+            mkOp2(OP_DIV, TYPE_U32, dst0[c], dvn, dvs);
+         if (dst1[c])
+            mkOp2(OP_MOD, TYPE_U32, dst1[c], dvn, dvs);
+      }
+      break;
+
+   case SM4_OPCODE_UMUL:
+      for (c = 0; c < 4; ++c) {
+         Value *a, *b;
+         if (dst0[c] || dst1[c]) {
+            a = src(0, c);
+            b = src(1, c);
+         }
+         if (dst0[c])
+            mkOp2(OP_MUL, TYPE_U32, dst0[c], a, b)->subOp =
+               NV50_IR_SUBOP_MUL_HIGH;
+         if (dst1[c])
+            mkOp2(OP_MUL, TYPE_U32, dst1[c], a, b);
+      }
 
    case SM4_OPCODE_DP2:
       handleDP(dst0, 2);
@@ -1565,6 +1651,15 @@ Converter::handleInstruction(unsigned int pos)
       break;
 
    case SM4_OPCODE_SINCOS:
+      for (c = 0; c < 4; ++c) {
+         Value *val;
+         if (dst0[c] || dst1[c])
+            val = src(0, c);
+         if (dst0[c])
+            mkOp1(OP_SIN, TYPE_F32, dst0[c], val);
+         if (dst1[c])
+            mkOp1(OP_COS, TYPE_F32, dst1[c], val);
+      }
       break;
 
    case SM4_OPCODE_EQ:
@@ -1620,7 +1715,8 @@ Converter::handleInstruction(unsigned int pos)
 
    case SM4_OPCODE_DISCARD:
       info.prop.fp.usesDiscard = TRUE;
-      mkOp(OP_DISCARD, TYPE_NONE, NULL);
+      mkOp(OP_DISCARD, TYPE_NONE, NULL)->setPredicate(
+         insn->insn.test_nz ? CC_NOT_P : CC_P, src(0, 0));
       break;
 
    case SM4_OPCODE_CALL:
@@ -1807,11 +1903,16 @@ Converter::handleInstruction(unsigned int pos)
       return false;
    }
 
-   for (c = 0; c < 4; ++c) {
-      if (rDst0[c]) {
+   for (c = 0; c < nc; ++c) {
+      if (nDstOpnds >= 1 && rDst0[c]) {
          if (dst0[c] != rDst0[c])
             mkMov(rDst0[c], dst0[c]);
          saveDst(0, c, rDst0[c]);
+      }
+      if (nDstOpnds >= 2 && rDst1[c]) {
+         if (dst1[c] != rDst1[c])
+            mkMov(rDst1[c], dst1[c]);
+         saveDst(1, c, rDst1[c]);
       }
    }
 
@@ -1927,6 +2028,8 @@ Converter::run()
    }
 
    phaseEnded = 0;
+   phase = 0;
+   subPhase = 0;
    for (unsigned int pos = 0; pos < sm4.insns.size(); ++pos) {
       handleInstruction(pos);
       if (likely(phase == 0) || (phaseEnded < 2))
