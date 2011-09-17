@@ -276,6 +276,10 @@ nvc0_vp_gen_header(struct nvc0_program *vp, struct nv50_ir_prog_info *info)
 static void
 nvc0_tp_get_tess_mode(struct nvc0_program *tp, struct nv50_ir_prog_info *info)
 {
+   if (info->prop.tp.outputPrim == PIPE_PRIM_MAX) {
+      tp->tp.tess_mode = ~0;
+      return;
+   }
    switch (info->prop.tp.domain) {
    case PIPE_PRIM_LINES:
       tp->tp.tess_mode = NVC0_3D_TESS_MODE_PRIM_ISOLINES;
@@ -343,6 +347,8 @@ nvc0_tcp_gen_header(struct nvc0_program *tcp, struct nv50_ir_prog_info *info)
 static int
 nvc0_tep_gen_header(struct nvc0_program *tep, struct nv50_ir_prog_info *info)
 {
+   tep->tp.input_patch_size = ~0;
+
    tep->hdr[0] = 0x20061 | (3 << 10);
    tep->hdr[4] = 0xff000;
 
