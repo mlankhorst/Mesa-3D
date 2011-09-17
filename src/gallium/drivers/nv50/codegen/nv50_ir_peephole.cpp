@@ -792,6 +792,20 @@ ModifierFolding::visit(BasicBlock *bb)
          i->src[0].mod = i->src[0].mod ^ Modifier(NV50_IR_MOD_NEG);
       }
 
+      if (i->op == OP_SIN || i->op == OP_COS) {
+         mi = i->getSrc(0)->getInsn();
+         // try to propagate modifier of PRESIN to SIN/COS so
+         // chances for sharing PRESIN are better
+         if (mi->op == OP_PRESIN &&
+             mi->src[0].mod != Modifier(0) &&
+             mi->getDef(0)->refCount() == 1) {
+            if (target->isModSupported(i, 0, mi->src[0].mod)) {
+               i->src[0].mod = mi->src[0].mod;
+               mi->src[0].mod = Modifier(0);
+            }
+         }
+      }
+
       for (int s = 0; s < 3 && i->srcExists(s); ++s) {
          mi = i->getSrc(s)->getInsn();
          if (!mi ||

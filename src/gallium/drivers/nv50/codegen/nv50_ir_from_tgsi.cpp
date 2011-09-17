@@ -1748,22 +1748,18 @@ Converter::handleInstruction(const struct tgsi_full_instruction *insn)
       break;
    case TGSI_OPCODE_COS:
    case TGSI_OPCODE_SIN:
-      val0 = getScratch();
       if (mask & 7) {
-         mkOp1(OP_PRESIN, TYPE_F32, val0, fetchSrc(0, 0));
-         mkOp1(op, TYPE_F32, val0, val0);
-         for (c = 0; c < 3; ++c)
+         val0 = mkOp1v(op, TYPE_F32, getScratch(), fetchSrc(0, 0));
+         for (c = 0; c <= 2; ++c)
             if (dst0[c])
                mkMov(dst0[c], val0);
       }
-      if (dst0[3]) {
-         mkOp1(OP_PRESIN, TYPE_F32, val0, fetchSrc(0, 3));
-         mkOp1(op, TYPE_F32, dst0[3], val0);
-      }
+      if (dst0[3])
+         mkOp1(op, TYPE_F32, dst0[3], fetchSrc(0, 3));
       break;
    case TGSI_OPCODE_SCS:
       if (mask & 3) {
-         val0 = mkOp1v(OP_PRESIN, TYPE_F32, getSSA(), fetchSrc(0, 0));
+         val0 = fetchSrc(0, 0);
          if (dst0[0])
             mkOp1(OP_COS, TYPE_F32, dst0[0], val0);
          if (dst0[1])

@@ -475,7 +475,7 @@ NVC0LoweringPass::readTessCoord(LValue *dst, int c)
    if (x)
       bld.mkFetch(x, TYPE_F32, FILE_SHADER_OUTPUT, 0x2f0, NULL, laneid);
    if (y)
-      bld.mkFetch(x, TYPE_F32, FILE_SHADER_OUTPUT, 0x2f4, NULL, laneid);
+      bld.mkFetch(y, TYPE_F32, FILE_SHADER_OUTPUT, 0x2f4, NULL, laneid);
 
    if (c == 2) {
       bld.mkOp2(OP_ADD, TYPE_F32, dst, x, y);
@@ -661,6 +661,11 @@ NVC0LoweringPass::visit(Instruction *i)
       return handleTXD(i->asTex());
    case OP_EX2:
       bld.mkOp1(OP_PREEX2, TYPE_F32, i->getDef(0), i->getSrc(0));
+      i->setSrc(0, i->getDef(0));
+      break;
+   case OP_SIN:
+   case OP_COS:
+      bld.mkOp1(OP_PRESIN, TYPE_F32, i->getDef(0), i->getSrc(0));
       i->setSrc(0, i->getDef(0));
       break;
    case OP_POW:
