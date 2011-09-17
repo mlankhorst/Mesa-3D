@@ -347,9 +347,9 @@ enum pipe_transfer_usage {
 #define PIPE_SHADER_VERTEX   0
 #define PIPE_SHADER_FRAGMENT 1
 #define PIPE_SHADER_GEOMETRY 2
-#define PIPE_SHADER_HULL     4
-#define PIPE_SHADER_DOMAIN   5
-#define PIPE_SHADER_TYPES    3
+#define PIPE_SHADER_HULL     3
+#define PIPE_SHADER_DOMAIN   4
+#define PIPE_SHADER_TYPES    5
 
 #define PIPE_SHADER_IR_TGSI  0
 #define PIPE_SHADER_IR_GLSL  1
