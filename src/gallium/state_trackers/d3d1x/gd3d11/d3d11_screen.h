@@ -311,20 +311,23 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 		int support = format_support[format];
 		if(support < 0)
 		{
-			support = 0;
 			unsigned buffer = D3D11_FORMAT_SUPPORT_BUFFER | D3D11_FORMAT_SUPPORT_IA_VERTEX_BUFFER | D3D11_FORMAT_SUPPORT_IA_INDEX_BUFFER;
 			unsigned sampler_view = D3D11_FORMAT_SUPPORT_SHADER_SAMPLE | D3D11_FORMAT_SUPPORT_MIP | D3D11_FORMAT_SUPPORT_MIP_AUTOGEN;
 			if(util_format_is_depth_or_stencil(format))
 				sampler_view |= D3D11_FORMAT_SUPPORT_SHADER_SAMPLE_COMPARISON;
 
+			support = 0;
+
 			/* TODO: do this properly when Gallium drivers actually support index/vertex format queries */
-                        if(screen->is_format_supported(screen, format, PIPE_BUFFER, 0, PIPE_BIND_VERTEX_BUFFER)
-                                || (screen->is_format_supported(screen, format, PIPE_BUFFER, 0, PIPE_BIND_INDEX_BUFFER)
-				|| format == PIPE_FORMAT_R8_UNORM))
+                        if(format == PIPE_FORMAT_R8_UNORM ||
+			   screen->is_format_supported(screen, format, PIPE_BUFFER, 0, PIPE_BIND_VERTEX_BUFFER) ||
+			   screen->is_format_supported(screen, format, PIPE_BUFFER, 0, PIPE_BIND_INDEX_BUFFER))
 				support |= buffer;
+
                         if(screen->is_format_supported(screen, format, PIPE_BUFFER, 0, PIPE_BIND_STREAM_OUTPUT))
 				support |= buffer | D3D11_FORMAT_SUPPORT_SO_BUFFER;
-                        if(screen->is_format_supported(screen, format, PIPE_TEXTURE_1D, 0, PIPE_BIND_SAMPLER_VIEW))
+
+			if(screen->is_format_supported(screen, format, PIPE_TEXTURE_1D, 0, PIPE_BIND_SAMPLER_VIEW))
 				support |= D3D11_FORMAT_SUPPORT_TEXTURE1D | sampler_view;
                         if(screen->is_format_supported(screen, format, PIPE_TEXTURE_2D, 0, PIPE_BIND_SAMPLER_VIEW))
 				support |= D3D11_FORMAT_SUPPORT_TEXTURE2D | sampler_view;
@@ -332,12 +335,16 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 				support |= D3D11_FORMAT_SUPPORT_TEXTURE2D | sampler_view;
                         if(screen->is_format_supported(screen, format, PIPE_TEXTURE_3D, 0, PIPE_BIND_SAMPLER_VIEW))
 				support |= D3D11_FORMAT_SUPPORT_TEXTURE3D | sampler_view;
+
+			/* TODO: not all formats are blendable */
                         if(screen->is_format_supported(screen, format, PIPE_TEXTURE_2D, 0, PIPE_BIND_RENDER_TARGET))
 				support |= D3D11_FORMAT_SUPPORT_TEXTURE2D | D3D11_FORMAT_SUPPORT_RENDER_TARGET | D3D11_FORMAT_SUPPORT_BLENDABLE;
-                        if(screen->is_format_supported(screen, format, PIPE_TEXTURE_2D, 0, PIPE_BIND_DEPTH_STENCIL))
+			if(screen->is_format_supported(screen, format, PIPE_TEXTURE_2D, 0, PIPE_BIND_DEPTH_STENCIL))
 				support |= D3D11_FORMAT_SUPPORT_TEXTURE2D | D3D11_FORMAT_SUPPORT_DEPTH_STENCIL;
-                        if(screen->is_format_supported(screen, format, PIPE_TEXTURE_2D, 0, PIPE_BIND_DISPLAY_TARGET))
+
+			if(screen->is_format_supported(screen, format, PIPE_TEXTURE_2D, 0, PIPE_BIND_DISPLAY_TARGET))
 				support |= D3D11_FORMAT_SUPPORT_DISPLAY;
+
 			format_support[format] = support;
 		}
 		*out_format_support = support;
@@ -695,11 +702,14 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 			if(array_size != 6)
 				return E_NOTIMPL;
 		}
-		else
+		else if (array_size > 1)
 		{
-			if(array_size > 1)
-				return E_NOTIMPL;
-			array_size = 1;
+			switch (target) {
+			case PIPE_TEXTURE_1D: target = PIPE_TEXTURE_1D_ARRAY; break;
+			case PIPE_TEXTURE_2D: target = PIPE_TEXTURE_2D_ARRAY; break;
+			default:
+				return E_INVALIDARG;
+			}
 		}
 		/* TODO: msaa */
 		struct pipe_resource templat;
@@ -708,6 +718,7 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 		templat.width0 = width;
 		templat.height0 = height;
 		templat.depth0 = depth;
+		templat.array_size = array_size;
 		if(mip_levels)
 			templat.last_level = mip_levels - 1;
 		else
@@ -958,10 +969,20 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 				def_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE1D;
 				def_desc.Texture1D.MipLevels = resource->last_level + 1;
 				break;
+			case PIPE_TEXTURE_1D_ARRAY:
+				def_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE1DARRAY;
+				def_desc.Texture1DArray.MipLevels = resource->last_level + 1;
+				def_desc.Texture1DArray.ArraySize = resource->array_size;
+				break;
 			case PIPE_TEXTURE_2D:
 			case PIPE_TEXTURE_RECT:
 				def_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
 				def_desc.Texture2D.MipLevels = resource->last_level + 1;
+				break;
+			case PIPE_TEXTURE_2D_ARRAY:
+				def_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DARRAY;
+				def_desc.Texture2DArray.MipLevels = resource->last_level + 1;
+				def_desc.Texture2DArray.ArraySize = resource->array_size;
 				break;
 			case PIPE_TEXTURE_3D:
 				def_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE3D;
@@ -992,12 +1013,15 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 		templat.texture = ((GalliumD3D11Resource<>*)iresource)->resource;
 		switch(desc->ViewDimension)
 		{
+		case D3D11_SRV_DIMENSION_TEXTURE1DARRAY:
+		case D3D11_SRV_DIMENSION_TEXTURE2DARRAY:
+			templat.u.tex.first_layer = desc->Texture1DArray.FirstArraySlice;
+			templat.u.tex.last_layer = templat.u.tex.first_layer + desc->Texture1DArray.ArraySize - 1;
+			// fall through
 		case D3D11_SRV_DIMENSION_TEXTURE1D:
 		case D3D11_SRV_DIMENSION_TEXTURE2D:
 		case D3D11_SRV_DIMENSION_TEXTURE3D:
-		case D3D11_SRV_DIMENSION_TEXTURE1DARRAY:
-		case D3D11_SRV_DIMENSION_TEXTURE2DARRAY:
-			/* yes, this works for all of these types (but TODO: texture arrays) */
+			// yes, this works for all of these types
 			templat.u.tex.first_level = desc->Texture1D.MostDetailedMip;
 			templat.u.tex.last_level = templat.u.tex.first_level + desc->Texture1D.MipLevels - 1;
 			break;
