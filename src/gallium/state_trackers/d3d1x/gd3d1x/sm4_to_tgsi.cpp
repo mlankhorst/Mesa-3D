@@ -461,10 +461,12 @@ struct sm4_to_tgsi_converter
 				case TGSI_TEXTURE_1D:
 					dim = 1;
 					break;
+				case TGSI_TEXTURE_1D_ARRAY:
 				case TGSI_TEXTURE_2D:
 				case TGSI_TEXTURE_RECT:
 					dim = 2;
 					break;
+				case TGSI_TEXTURE_2D_ARRAY:
 				case TGSI_TEXTURE_3D:
 					dim = 3;
 					break;
@@ -786,9 +788,17 @@ next:;
 					targets[idx].first = TGSI_TEXTURE_1D;
 					targets[idx].second = TGSI_TEXTURE_SHADOW1D;
 					break;
+				case SM4_TARGET_TEXTURE1DARRAY:
+					targets[idx].first = TGSI_TEXTURE_1D_ARRAY;
+					targets[idx].second = TGSI_TEXTURE_SHADOW1D_ARRAY;
+					break;
 				case SM4_TARGET_TEXTURE2D:
 					targets[idx].first = TGSI_TEXTURE_2D;
 					targets[idx].second = TGSI_TEXTURE_SHADOW2D;
+					break;
+				case SM4_TARGET_TEXTURE2DARRAY:
+					targets[idx].first = TGSI_TEXTURE_2D_ARRAY;
+					targets[idx].second = TGSI_TEXTURE_SHADOW2D_ARRAY;
 					break;
 				case SM4_TARGET_TEXTURE3D:
 					targets[idx].first = TGSI_TEXTURE_3D;
