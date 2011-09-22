@@ -483,6 +483,7 @@ Converter::getDstOpndCount(enum sm4_opcode opcode) const
    switch (opcode) {
    case SM4_OPCODE_SINCOS:
    case SM4_OPCODE_UDIV:
+   case SM4_OPCODE_IMUL:
    case SM4_OPCODE_UMUL:
       return 2;
    case SM4_OPCODE_BREAK:
@@ -690,12 +691,14 @@ Converter::parseSignature()
          break;
       case D3D_NAME_PRIMITIVE_ID:
          info.in[i].sn = TGSI_SEMANTIC_PRIMID;
+         recordSV(TGSI_SEMANTIC_PRIMID, 0, 1, true);
          break;
       case D3D_NAME_INSTANCE_ID:
          info.in[i].sn = TGSI_SEMANTIC_INSTANCEID;
          break;
       case D3D_NAME_IS_FRONT_FACE:
          info.in[i].sn = TGSI_SEMANTIC_FACE;
+         recordSV(TGSI_SEMANTIC_FACE, 0, 1, true);
          break;
       default:
          assert(!"invalid input linkage semantic");
@@ -1242,6 +1245,7 @@ Converter::src(const sm4_op& op, int c, int s)
       break;
    case SM4_FILE_INPUT_GS_INSTANCE_ID:
    case SM4_FILE_OUTPUT_CONTROL_POINT_ID:
+      recordSV(TGSI_SEMANTIC_INVOCATIONID, 0, 1, true);
       res = mkOp1v(OP_RDSV, TYPE_U32, getSSA(), mkSysVal(SV_INVOCATION_ID, 0));
       break;
    case SM4_FILE_CYCLE_COUNTER:
@@ -1539,7 +1543,6 @@ Converter::handleInstruction(unsigned int pos)
    case SM4_OPCODE_IADD:
    case SM4_OPCODE_IMAX:
    case SM4_OPCODE_IMIN:
-   case SM4_OPCODE_IMUL:
    case SM4_OPCODE_ISHL:
    case SM4_OPCODE_ISHR:
    case SM4_OPCODE_MIN:
@@ -1586,6 +1589,7 @@ Converter::handleInstruction(unsigned int pos)
       }
       break;
 
+   case SM4_OPCODE_IMUL:
    case SM4_OPCODE_UMUL:
       for (c = 0; c < 4; ++c) {
          Value *a, *b;
@@ -1594,10 +1598,10 @@ Converter::handleInstruction(unsigned int pos)
             b = src(1, c);
          }
          if (dst0[c])
-            mkOp2(OP_MUL, TYPE_U32, dst0[c], a, b)->subOp =
+            mkOp2(OP_MUL, dTy, dst0[c], a, b)->subOp =
                NV50_IR_SUBOP_MUL_HIGH;
          if (dst1[c])
-            mkOp2(OP_MUL, TYPE_U32, dst1[c], a, b);
+            mkOp2(OP_MUL, dTy, dst1[c], a, b);
       }
 
    case SM4_OPCODE_DP2:
@@ -1861,11 +1865,14 @@ Converter::handleInstruction(unsigned int pos)
       break;
 
    case SM4_OPCODE_GATHER4:
+      assert(!"GATHER4 not implemented\n");
       break;
    case SM4_OPCODE_RESINFO:
+      assert(!"RESINFO not implemented\n");
       break;
    case SM4_OPCODE_LD:
    case SM4_OPCODE_LD_MS:
+      assert(!"LD,LD_MS not implemented\n");
       break;
 
    case SM4_OPCODE_NOP:
