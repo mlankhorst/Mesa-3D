@@ -166,7 +166,8 @@ struct pipe_context {
 
    void * (*create_program)(struct pipe_context *,
                             unsigned type,
-                            unsigned repr, void *);
+                            unsigned repr, void *,
+                            struct pipe_shader_state *);
    void   (*bind_program)(struct pipe_context *, unsigned type, void *);
    void   (*destroy_program)(struct pipe_context *, void *);
 
