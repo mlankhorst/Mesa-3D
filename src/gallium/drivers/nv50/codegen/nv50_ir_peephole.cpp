@@ -161,11 +161,23 @@ LoadPropagation::checkSwapSrc01(Instruction *insn)
       return;
    }
 
-   if (insn->op == OP_SET)
-      insn->asCmp()->setCond = reverseCondCode(insn->asCmp()->setCond);
-   else
-   if (insn->op == OP_SLCT)
-      insn->asCmp()->setCond = inverseCondCode(insn->asCmp()->setCond);
+   CmpInstruction *cmp = insn->asCmp();
+   if (!cmp)
+      return;
+   if (cmp->op == OP_SET) {
+      cmp->setCond = reverseCondCode(cmp->setCond);
+   } else
+   if (cmp->op == OP_SLCT) {
+      cmp->setCond = inverseCondCode(cmp->setCond);
+      if (cmp->sType == TYPE_F32) {
+         // fixup f32 compares with 0
+         if (cmp->setCond == CC_EQU)
+            cmp->setCond = CC_EQ;
+         else
+         if (cmp->setCond == CC_NE)
+            cmp->setCond = CC_NEU;
+      }
+   }
 }
 
 bool
@@ -2220,7 +2232,7 @@ Program::optimizeSSA(int level)
 bool
 Program::optimizePostRA(int level)
 {
-   RUN_PASS(2, FlatteningPass, run);
+   // RUN_PASS(2, FlatteningPass, run);
    return true;
 }
 
