@@ -538,7 +538,8 @@ nvc0_gp_set_sampler_views(struct pipe_context *pipe,
 static void *
 nvc0_create_program(struct pipe_context *pipe,
                     unsigned type,
-                    unsigned repr, void *ir)
+                    unsigned repr, void *ir,
+		    struct pipe_shader_state *cso)
 {
    struct nvc0_program *prog;
 
@@ -546,6 +547,8 @@ nvc0_create_program(struct pipe_context *pipe,
    if (!prog)
       return NULL;
 
+   if (cso && cso->tokens)
+      prog->pipe.tokens = tgsi_dup_tokens(cso->tokens);
    prog->type = type;
    prog->pipe.ir = ir;
    prog->pipe.representation = repr;
