@@ -959,6 +959,9 @@ CodeEmitterNVC0::emitTEX(const TexInstruction *i)
       assert(!"invalid texture op");
       break;
    }
+   if (i->tex.levelZero)
+      code[1] |= 0x02000000;
+
    defId(i->def[0], 14);
    srcId(i->src[0], 20);
 
