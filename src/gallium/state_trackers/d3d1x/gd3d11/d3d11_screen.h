@@ -747,9 +747,10 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 			return E_FAIL;
 		if(initial_data)
 		{
+			const unsigned last_level = mip_levels ? templat.last_level : 0;
 			for(unsigned slice = 0; slice < array_size; ++slice)
 			{
-				for(unsigned level = 0; level <= templat.last_level; ++level)
+				for(unsigned level = 0; level <= last_level; ++level)
 				{
 					struct pipe_box box;
 					box.x = box.y = 0;
@@ -1270,11 +1271,11 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 		void* shader_cso = 0;
 
 		if (screen->get_param(screen, PIPE_CAP_SHADER_IR) & (1 << PIPE_SHADER_IR_SM4)) {
-			pipe_shader.tokens = 0;
+			pipe_shader.tokens = 0; // (const tgsi_token*)sm4_to_tgsi(*sm4); // for RBUG
 			pipe_shader.representation = PIPE_SHADER_IR_SM4;
 			pipe_shader.ir = sm4.release();
 			shader_cso = immediate_pipe->create_program(immediate_pipe, type, PIPE_SHADER_IR_SM4,
-								    pipe_shader.ir);
+								    pipe_shader.ir, &pipe_shader);
 		} else {
 			pipe_shader.representation = PIPE_SHADER_IR_TGSI;
 			pipe_shader.tokens = (const tgsi_token*)sm4_to_tgsi(*sm4);
