@@ -1080,9 +1080,17 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 			case PIPE_TEXTURE_1D:
 				def_desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE1D;
 				break;
+			case PIPE_TEXTURE_1D_ARRAY:
+				def_desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE1DARRAY;
+				def_desc.Texture1DArray.ArraySize = resource->array_size;
+				break;
 			case PIPE_TEXTURE_2D:
 			case PIPE_TEXTURE_RECT:
 				def_desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+				break;
+			case PIPE_TEXTURE_2D_ARRAY:
+				def_desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DARRAY;
+				def_desc.Texture2DArray.ArraySize = resource->array_size;
 				break;
 			case PIPE_TEXTURE_3D:
 				def_desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE3D;
@@ -1117,15 +1125,13 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 		case D3D11_RTV_DIMENSION_TEXTURE3D:
 			templat.u.tex.level = desc->Texture3D.MipSlice;
 			templat.u.tex.first_layer = desc->Texture3D.FirstWSlice;
-			/* XXX FIXME */
-			templat.u.tex.last_layer = desc->Texture3D.FirstWSlice;
+			templat.u.tex.last_layer = desc->Texture3D.FirstWSlice + desc->Texture3D.WSize - 1;
 			break;
 		case D3D11_RTV_DIMENSION_TEXTURE1DARRAY:
 		case D3D11_RTV_DIMENSION_TEXTURE2DARRAY:
 			templat.u.tex.level = desc->Texture1DArray.MipSlice;
 			templat.u.tex.first_layer = desc->Texture1DArray.FirstArraySlice;
-			/* XXX FIXME */
-			templat.u.tex.last_layer = desc->Texture1DArray.FirstArraySlice;
+			templat.u.tex.last_layer = desc->Texture1DArray.FirstArraySlice + desc->Texture1DArray.ArraySize - 1;
 			break;
 		case D3D11_RTV_DIMENSION_BUFFER:
 		case D3D11_RTV_DIMENSION_TEXTURE2DMS:
@@ -1164,9 +1170,17 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 			case PIPE_TEXTURE_1D:
 				def_desc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE1D;
 				break;
+			case PIPE_TEXTURE_1D_ARRAY:
+				def_desc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE1DARRAY;
+				def_desc.Texture1DArray.ArraySize = resource->array_size;
+				break;
 			case PIPE_TEXTURE_2D:
 			case PIPE_TEXTURE_RECT:
 				def_desc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+				break;
+			case PIPE_TEXTURE_2D_ARRAY:
+				def_desc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DARRAY;
+				def_desc.Texture2DArray.ArraySize = resource->array_size;
 				break;
 			case PIPE_TEXTURE_CUBE:
 				def_desc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DARRAY;
@@ -1198,8 +1212,7 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 		case D3D11_DSV_DIMENSION_TEXTURE2DARRAY:
 			templat.u.tex.level = desc->Texture1DArray.MipSlice;
 			templat.u.tex.first_layer = desc->Texture1DArray.FirstArraySlice;
-			/* XXX FIXME */
-			templat.u.tex.last_layer = desc->Texture1DArray.FirstArraySlice;
+			templat.u.tex.last_layer = desc->Texture1DArray.FirstArraySlice + desc->Texture1DArray.ArraySize - 1;
 			break;
 		case D3D11_DSV_DIMENSION_TEXTURE2DMS:
 		case D3D11_DSV_DIMENSION_TEXTURE2DMSARRAY:
