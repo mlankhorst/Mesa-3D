@@ -667,134 +667,153 @@ bool
 Converter::parseSignature()
 {
    struct nv50_ir_varying *patch;
-   unsigned int i, n, p;
+   unsigned int i, r, n;
 
-   info.numInputs = sm4.params_in_num;
-   info.numOutputs = sm4.params_out_num;
+   info.numInputs = 0;
+   info.numOutputs = 0;
+   info.numPatchConstants = 0;
 
    for (n = 0, i = 0; i < sm4.params_in_num; ++i) {
-      info.in[i].id = i;
-      info.in[i].mask = sm4.params_in[i].ReadWriteMask;
-      info.in[i].regular = 1;
-      info.in[i].patch = 0;
+      r = sm4.params_in[i].Register;
+
+      info.in[r].mask |= sm4.params_in[i].ReadWriteMask;
+      info.in[r].id = r;
+      if (info.in[r].regular) // already assigned semantic name/index
+         continue;
+      info.in[r].regular = 1;
+      info.in[r].patch = 0;
+
+      info.numInputs = MAX2(info.numInputs, r + 1);
 
       switch (sm4.params_in[i].SystemValueType) {
       case D3D_NAME_UNDEFINED:
-         info.in[i].sn = TGSI_SEMANTIC_GENERIC;
-         info.in[i].si = n++;
+         info.in[r].sn = TGSI_SEMANTIC_GENERIC;
+         info.in[r].si = n++;
          break;
       case D3D_NAME_POSITION:
-         info.in[i].sn = TGSI_SEMANTIC_POSITION;
+         info.in[r].sn = TGSI_SEMANTIC_POSITION;
          break;
       case D3D_NAME_VERTEX_ID:
-         info.in[i].sn = TGSI_SEMANTIC_VERTEXID;
+         info.in[r].sn = TGSI_SEMANTIC_VERTEXID;
          break;
       case D3D_NAME_PRIMITIVE_ID:
-         info.in[i].sn = TGSI_SEMANTIC_PRIMID;
+         info.in[r].sn = TGSI_SEMANTIC_PRIMID;
+         // no corresponding output
          recordSV(TGSI_SEMANTIC_PRIMID, 0, 1, true);
          break;
       case D3D_NAME_INSTANCE_ID:
-         info.in[i].sn = TGSI_SEMANTIC_INSTANCEID;
+         info.in[r].sn = TGSI_SEMANTIC_INSTANCEID;
          break;
       case D3D_NAME_IS_FRONT_FACE:
-         info.in[i].sn = TGSI_SEMANTIC_FACE;
+         info.in[r].sn = TGSI_SEMANTIC_FACE;
+         // no corresponding output
          recordSV(TGSI_SEMANTIC_FACE, 0, 1, true);
          break;
       default:
-         assert(!"invalid input linkage semantic");
+         assert(!"invalid/unsupported input linkage semantic");
          break;
       }
    }
 
    for (n = 0, i = 0; i < sm4.params_out_num; ++i) {
-      info.out[i].id = i;
-      info.out[i].mask = sm4.params_out[i].Mask;
-      info.out[i].regular = 1;
-      info.out[i].patch = 0;
+      r = sm4.params_out[i].Register;
+
+      info.out[r].mask |= ~sm4.params_out[i].ReadWriteMask;
+      info.out[r].id = r;
+      if (info.out[r].regular) // already assigned semantic name/index
+         continue;
+      info.out[r].regular = 1;
+      info.out[r].patch = 0;
+
+      info.numOutputs = MAX2(info.numOutputs, r + 1);
 
       switch (sm4.params_out[i].SystemValueType) {
       case D3D_NAME_UNDEFINED:
          if (prog->getType() == Program::TYPE_FRAGMENT)
-            info.out[i].sn = TGSI_SEMANTIC_COLOR;
+            info.out[r].sn = TGSI_SEMANTIC_COLOR;
          else
-            info.out[i].sn = TGSI_SEMANTIC_GENERIC;
-         // XXX: multiple render targets
-         info.out[i].si = n++;
+            info.out[r].sn = TGSI_SEMANTIC_GENERIC;
+         info.out[r].si = n++;
          break;
       case D3D_NAME_POSITION:
       case D3D_NAME_DEPTH:
       case D3D_NAME_DEPTH_GREATER_EQUAL:
       case D3D_NAME_DEPTH_LESS_EQUAL:
-         info.out[i].sn = TGSI_SEMANTIC_POSITION;
+         info.out[r].sn = TGSI_SEMANTIC_POSITION;
          break;
       case D3D_NAME_CULL_DISTANCE:
          info.io.cullDistanceMask |= 1 << sm4.params_out[i].SemanticIndex;
          // fall through
       case D3D_NAME_CLIP_DISTANCE:
-         info.out[i].sn = TGSI_SEMANTIC_CLIPDISTANCE;
-         info.out[i].si = sm4.params_out[i].SemanticIndex;
+         info.out[r].sn = TGSI_SEMANTIC_CLIPDISTANCE;
+         info.out[r].si = sm4.params_out[i].SemanticIndex;
          break;
       case D3D_NAME_RENDER_TARGET_ARRAY_INDEX:
-         info.out[i].sn = TGSI_SEMANTIC_LAYER;
+         info.out[r].sn = TGSI_SEMANTIC_LAYER;
          break;
       case D3D_NAME_VIEWPORT_ARRAY_INDEX:
-         info.out[i].sn = TGSI_SEMANTIC_VIEWPORTINDEX;
+         info.out[r].sn = TGSI_SEMANTIC_VIEWPORTINDEX;
          break;
       case D3D_NAME_PRIMITIVE_ID:
-         info.out[i].sn = TGSI_SEMANTIC_PRIMID;
+         info.out[r].sn = TGSI_SEMANTIC_PRIMID;
          break;
       case D3D_NAME_TARGET:
-         info.out[i].sn = TGSI_SEMANTIC_COLOR;
-         info.out[i].si = sm4.params_out[i].SemanticIndex;
+         info.out[r].sn = TGSI_SEMANTIC_COLOR;
+         info.out[r].si = sm4.params_out[i].SemanticIndex;
+         break;
+      case D3D_NAME_COVERAGE:
+         info.out[r].sn = TGSI_SEMANTIC_SAMPLEMASK;
          break;
       case D3D_NAME_SAMPLE_INDEX:
-      case D3D_NAME_COVERAGE:
-         assert(!"unsupported linkage semantic");
-         break;
       default:
-         assert(!"invalid output linkage semantic");
+         assert(!"invalid/unsupported output linkage semantic");
          break;
       }
    }
 
-   if (prog->getType() == Program::TYPE_TESSELLATION_EVAL) {
-      p = sm4.params_in_num;
-      patch = &info.in[p];
-      info.numInputs += sm4.params_patch_num;
-   } else {
-      p = sm4.params_out_num;
-      patch = &info.out[p];
-      info.numOutputs += sm4.params_patch_num;
-   }
+   if (prog->getType() == Program::TYPE_TESSELLATION_EVAL)
+      patch = &info.in[info.numInputs];
+   else
+      patch = &info.out[info.numOutputs];
 
-   for (i = 0; i < sm4.params_patch_num; ++i) {
-      patch[i].id = i + p;
-      patch[i].mask = sm4.params_patch[i].Mask;
-      patch[i].regular = 1;
-      patch[i].patch = 1;
+   for (n = 0, i = 0; i < sm4.params_patch_num; ++i) {
+      r = sm4.params_patch[i].Register;
+
+      patch[r].mask |= sm4.params_patch[i].Mask;
+      patch[r].id = r;
+      if (patch[r].regular) // already visited
+         continue;
+      patch[r].regular = 1;
+      patch[r].patch = 1;
+
+      info.numPatchConstants = MAX2(info.numPatchConstants, r + 1);
 
       switch (sm4.params_patch[i].SystemValueType) {
       case D3D_NAME_UNDEFINED:
-         patch[i].sn = TGSI_SEMANTIC_GENERIC;
-         patch[i].si = info.numPatchConstants++;
+         patch[r].sn = TGSI_SEMANTIC_GENERIC;
+         patch[r].si = n++;
          break;
       case D3D_NAME_FINAL_QUAD_EDGE_TESSFACTOR:
       case D3D_NAME_FINAL_TRI_EDGE_TESSFACTOR:
       case D3D_NAME_FINAL_LINE_DETAIL_TESSFACTOR:
-         patch[i].sn = TGSI_SEMANTIC_TESSFACTOR;
-         patch[i].si = sm4.params_patch[i].SemanticIndex;
+         patch[r].sn = TGSI_SEMANTIC_TESSFACTOR;
+         patch[r].si = sm4.params_patch[i].SemanticIndex;
          break;
       case D3D_NAME_FINAL_QUAD_INSIDE_TESSFACTOR:
       case D3D_NAME_FINAL_TRI_INSIDE_TESSFACTOR:
       case D3D_NAME_FINAL_LINE_DENSITY_TESSFACTOR:
-         patch[i].sn = TGSI_SEMANTIC_TESSFACTOR;
-         patch[i].si = sm4.params_patch[i].SemanticIndex + 4;
+         patch[r].sn = TGSI_SEMANTIC_TESSFACTOR;
+         patch[r].si = sm4.params_patch[i].SemanticIndex + 4;
          break;
       default:
          assert(!"invalid patch-constant linkage semantic");
          break;
       }
    }
+   if (prog->getType() == Program::TYPE_TESSELLATION_EVAL)
+      info.numInputs += info.numPatchConstants;
+   else
+      info.numOutputs += info.numPatchConstants;
 
    return true;
 }
@@ -1199,7 +1218,7 @@ Converter::src(const sm4_op& op, int c, int s)
 
       idx = 0;
       if (op.file == SM4_FILE_INPUT_PATCH_CONSTANT)
-         idx = sm4.params_in_num;
+         idx = info.numInputs - info.numPatchConstants;
 
       if (op.num_indices == 2) {
          vtx = getVtxPtr(s);
@@ -1352,7 +1371,7 @@ Converter::saveDst(const sm4_op &op, int c, Value *value, int s)
          oData.store(idx, c, NULL, value);
       } else {
          if (phase)
-            idx += sm4.params_out_num;
+            idx += info.numOutputs - info.numPatchConstants;
          const int shl = (info.out[idx].sn == TGSI_SEMANTIC_TESSFACTOR) ? 2 : 4;
          sym = oSym(idx, c);
          if (sym->reg.file == FILE_SHADER_OUTPUT)
