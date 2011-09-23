@@ -46,6 +46,20 @@ struct nvc0_query {
    struct nouveau_mm_allocation *mm;
 };
 
+static const char *pipeline_statistics_names[] =
+{
+   "VFETCH/VERTICES",
+   "VFETCH/PRIMS",
+   "VP/LAUNCHES",
+   "GP/LAUNCHES",
+   "GP/PRIMS_OUT",
+   "RAST/PRIMS_IN",
+   "RAST/PRIMS_DRAWN",
+   "ROP/PIXELS",
+   "TCP/LAUNCHES",
+   "TEP/LAUNCHES"
+};
+
 #define NVC0_QUERY_ALLOC_SPACE 128
 
 static INLINE struct nvc0_query *
@@ -106,7 +120,7 @@ nvc0_query_create(struct pipe_context *pipe, unsigned type)
       return NULL;
 
    if (type == PIPE_QUERY_PIPELINE_STATISTICS)
-      space = NVC0_QUERY_ALLOC_SPACE * 2;
+      space = NVC0_QUERY_ALLOC_SPACE * 4;
 
    if (!nvc0_query_allocate(nvc0, q, space)) {
       FREE(q);
@@ -189,17 +203,21 @@ nvc0_query_begin(struct pipe_context *pipe, struct pipe_query *pq)
       nvc0_query_get(chan, q, 0x10, 0x00005002);
       break;
    case PIPE_QUERY_PIPELINE_STATISTICS:
-      /* XXX: values for nv50, those marked with x don't work */
-      nvc0_query_get(chan, q, 0x80 + 0x00, 0x00801002); /* VFETCH, VERTICES */
-      nvc0_query_get(chan, q, 0x80 + 0x08, 0x01801002); /* VFETCH, PRIMS x */
-      nvc0_query_get(chan, q, 0x80 + 0x10, 0x02802002); /* VP, LAUNCHES */
-      nvc0_query_get(chan, q, 0x80 + 0x18, 0x03806002); /* GP, LAUNCHES x */
-      nvc0_query_get(chan, q, 0x80 + 0x20, 0x04806002); /* GP, PRIMS_OUT */
-      nvc0_query_get(chan, q, 0x80 + 0x28, 0x07804002); /* RAST, PRIMS_IN x */
-      nvc0_query_get(chan, q, 0x80 + 0x30, 0x08804002); /* RAST, PRIMS */
-      nvc0_query_get(chan, q, 0x80 + 0x38, 0x0980a002); /* ROP, PIXELS x */
-      nvc0_query_get(chan, q, 0x80 + 0x40, 0x02803002); /* TCP, LAUNCHES x */
-      nvc0_query_get(chan, q, 0x80 + 0x48, 0x02803002); /* TEP, LAUNCHES x */
+      nvc0_query_get(chan, q, 0xc0 + 0x00, 0x00801002); /* VFETCH, VERTICES */
+      nvc0_query_get(chan, q, 0xc0 + 0x10, 0x01801002); /* VFETCH, PRIMS */
+      nvc0_query_get(chan, q, 0xc0 + 0x20, 0x02802002); /* VP, LAUNCHES */
+      nvc0_query_get(chan, q, 0xc0 + 0x30, 0x03806002); /* GP, ? */
+      nvc0_query_get(chan, q, 0xc0 + 0x40, 0x04806002); /* GP, ? */
+      // nvc0_query_get(chan, q, 0xc0 + 0x50, 0x05805002); /* SO, EMIT */
+      // nvc0_query_get(chan, q, 0xc0 + 0x60, 0x06805002); /* SO, ? */
+      nvc0_query_get(chan, q, 0xc0 + 0x50, 0x07804002); /* RAST, PRIMS_IN */
+      nvc0_query_get(chan, q, 0xc0 + 0x60, 0x08804002); /* RAST, PRIMS_OUT */
+      nvc0_query_get(chan, q, 0xc0 + 0x70, 0x0980a002); /* ROP, PIXELS */
+      // nvc0_query_get(chan, q, 0xc0 + 0xa0, 0x0a80f002); /* CROP, ? */
+      // nvc0_query_get(chan, q, 0xc0 + 0xb0, 0x0c80f002); /* CROP, ? */
+      nvc0_query_get(chan, q, 0xc0 + 0x80, 0x0d808002); /* TCP, LAUNCHES ? */
+      nvc0_query_get(chan, q, 0xc0 + 0x90, 0x0e809002); /* TEP, LAUNCHES ? */
+      nvc0_query_get(chan, q, 0xc0 + 0xa0, 0x0f809002); /* TEP, ? */
       break;
    default:
       break;
@@ -241,15 +259,20 @@ nvc0_query_end(struct pipe_context *pipe, struct pipe_query *pq)
       break;
    case PIPE_QUERY_PIPELINE_STATISTICS:
       nvc0_query_get(chan, q, 0x00, 0x00801002); /* VFETCH, VERTICES */
-      nvc0_query_get(chan, q, 0x08, 0x01801002); /* VFETCH, PRIMS */
-      nvc0_query_get(chan, q, 0x10, 0x02802002); /* VP, LAUNCHES */
-      nvc0_query_get(chan, q, 0x18, 0x03806002); /* GP, LAUNCHES */
-      nvc0_query_get(chan, q, 0x20, 0x04806002); /* GP, PRIMS_OUT */
-      nvc0_query_get(chan, q, 0x28, 0x07804002); /* RAST, PRIMS_IN */
-      nvc0_query_get(chan, q, 0x30, 0x08804002); /* RAST, PRIMS */
-      nvc0_query_get(chan, q, 0x38, 0x0980a002); /* ROP, PIXELS */
-      nvc0_query_get(chan, q, 0x40, 0x02803002); /* TCP, LAUNCHES */
-      nvc0_query_get(chan, q, 0x48, 0x02803002); /* TEP, LAUNCHES */
+      nvc0_query_get(chan, q, 0x10, 0x01801002); /* VFETCH, PRIMS */
+      nvc0_query_get(chan, q, 0x20, 0x02802002); /* VP, LAUNCHES */
+      nvc0_query_get(chan, q, 0x30, 0x03806002); /* GP, ? */
+      nvc0_query_get(chan, q, 0x40, 0x04806002); /* GP, ? */
+      // nvc0_query_get(chan, q, 0x50, 0x05805002); /* SO, EMIT */
+      // nvc0_query_get(chan, q, 0x60, 0x06805002); /* SO, ? */
+      nvc0_query_get(chan, q, 0x50, 0x07804002); /* RAST, PRIMS_IN */
+      nvc0_query_get(chan, q, 0x60, 0x08804002); /* RAST, PRIMS_OUT */
+      nvc0_query_get(chan, q, 0x70, 0x0980a002); /* ROP, PIXELS */
+      // nvc0_query_get(chan, q, 0xa0, 0x0a80f002); /* CROP, ? */
+      // nvc0_query_get(chan, q, 0xb0, 0x0c80f002); /* CROP, ? */
+      nvc0_query_get(chan, q, 0x80, 0x0d808002); /* TCP, LAUNCHES ? */
+      nvc0_query_get(chan, q, 0x90, 0x0e809002); /* TEP, LAUNCHES ? */
+      nvc0_query_get(chan, q, 0xa0, 0x0f809002); /* TEP, ? */
       break;
    default:
       assert(0);
@@ -298,8 +321,10 @@ nvc0_query_result(struct pipe_context *pipe, struct pipe_query *pq,
             FIRE_RING(chan);
          return FALSE;
       }
+      debug_printf("waiting for query ...");
       if (!nvc0_query_wait(q))
          return FALSE;
+      debug_printf(" ready\n");
    }
    q->ready = TRUE;
 
@@ -323,8 +348,11 @@ nvc0_query_result(struct pipe_context *pipe, struct pipe_query *pq,
       res64[0] = data64[1] - data64[3];
       break;
    case PIPE_QUERY_PIPELINE_STATISTICS:
-      for (i = 0; i < 10; ++i)
-         res64[i] = data64[i] - data64[16 + i];
+      for (i = 0; i < 10; ++i) {
+         res64[i] = data64[i * 2] - data64[24 + i * 2];
+	 debug_printf("%s: %"PRIu64"\n",
+		      pipeline_statistics_names[i], res64[i]);
+      }
       break;
    default:
       return FALSE;
