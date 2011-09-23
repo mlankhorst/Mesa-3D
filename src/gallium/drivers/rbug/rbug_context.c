@@ -36,6 +36,8 @@
 #include "rbug_context.h"
 #include "rbug_objects.h"
 
+// #define pipe_mutex_lock(x) do { } while(0)
+// #define pipe_mutex_unlock(x) do { } while(0)
 
 static void
 rbug_destroy(struct pipe_context *_pipe)
@@ -479,6 +481,18 @@ rbug_delete_vs_state(struct pipe_context *_pipe,
    pipe_mutex_unlock(rb_pipe->call_mutex);
 }
 
+static void
+rbug_bind_hs_state(struct pipe_context *_pipe, void *hwcso)
+{
+   debug_printf("%s: stub\n", __FUNCTION__);
+}
+
+static void
+rbug_bind_ds_state(struct pipe_context *_pipe, void *hwcso)
+{
+   debug_printf("%s: stub\n", __FUNCTION__);
+}
+
 static void *
 rbug_create_gs_state(struct pipe_context *_pipe,
                      const struct pipe_shader_state *state)
@@ -495,6 +509,35 @@ rbug_create_gs_state(struct pipe_context *_pipe,
       return NULL;
 
    return rbug_shader_create(rb_pipe, state, result, RBUG_SHADER_GEOM);
+}
+
+static void *
+rbug_create_program(struct pipe_context *_pipe,
+                    unsigned type,
+                    unsigned repr, void *data,
+		    struct pipe_shader_state *state)
+{
+   struct rbug_context *rb_pipe = rbug_context(_pipe);
+   struct pipe_context *pipe = rb_pipe->pipe;
+   void *result;
+
+   pipe_mutex_lock(rb_pipe->call_mutex);
+   result = pipe->create_program(pipe, type, repr, data, state);
+   pipe_mutex_unlock(rb_pipe->call_mutex);
+
+   if (!result)
+      return NULL;
+
+   switch (type) {
+   case PIPE_SHADER_VERTEX: type = RBUG_SHADER_VERTEX; break;
+   case PIPE_SHADER_FRAGMENT: type = RBUG_SHADER_FRAGMENT; break;
+   case PIPE_SHADER_GEOMETRY: type = RBUG_SHADER_GEOM; break;
+   default:
+      assert(!"RBUG: unsupported shader type");
+      break;
+   }
+
+   return rbug_shader_create(rb_pipe, state, result, type);
 }
 
 static void
@@ -1208,6 +1251,9 @@ rbug_context_create(struct pipe_screen *_screen, struct pipe_context *pipe)
    rb_pipe->base.create_gs_state = rbug_create_gs_state;
    rb_pipe->base.bind_gs_state = rbug_bind_gs_state;
    rb_pipe->base.delete_gs_state = rbug_delete_gs_state;
+   rb_pipe->base.bind_hs_state = rbug_bind_hs_state;
+   rb_pipe->base.bind_ds_state = rbug_bind_ds_state;
+   rb_pipe->base.create_program = rbug_create_program;
    rb_pipe->base.create_vertex_elements_state = rbug_create_vertex_elements_state;
    rb_pipe->base.bind_vertex_elements_state = rbug_bind_vertex_elements_state;
    rb_pipe->base.delete_vertex_elements_state = rbug_delete_vertex_elements_state;

@@ -276,6 +276,8 @@ rbug_screen_create(struct pipe_screen *screen)
    if (!debug_get_option_rbug())
       return screen;
 
+   debug_printf("RBUG: wrapping screen(%p)\n", screen);
+
    rb_screen = CALLOC_STRUCT(rbug_screen);
    if (!rb_screen)
       return screen;

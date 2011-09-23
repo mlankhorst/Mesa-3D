@@ -565,7 +565,7 @@ rbug_shader_info(struct rbug_rbug *tr_rbug, struct rbug_header *header, uint32_t
 
    tr_shdr = rbug_get_shader_locked(rb_context, info->shader);
 
-   if (!tr_shdr) {
+   if (!tr_shdr || !tr_shdr->tokens) {
       pipe_mutex_unlock(rb_context->list_mutex);
       pipe_mutex_unlock(rb_screen->list_mutex);
       return -ESRCH;
@@ -650,7 +650,7 @@ rbug_shader_replace(struct rbug_rbug *tr_rbug, struct rbug_header *header)
 
    tr_shdr = rbug_get_shader_locked(rb_context, rep->shader);
 
-   if (!tr_shdr) {
+   if (!tr_shdr || !tr_shdr->tokens) {
       pipe_mutex_unlock(rb_context->list_mutex);
       pipe_mutex_unlock(rb_screen->list_mutex);
       return -ESRCH;
