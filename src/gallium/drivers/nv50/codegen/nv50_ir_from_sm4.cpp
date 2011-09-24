@@ -135,7 +135,7 @@ private:
    CondCode cvtCondCode(enum sm4_opcode op) const;
    RoundMode cvtRoundingMode(enum sm4_opcode op) const;
    TexTarget cvtTexTarget(enum sm4_target,
-                           enum sm4_opcode, operation&) const;
+                           enum sm4_opcode, operation *) const;
    SVSemantic cvtSemantic(enum sm4_sv, uint8_t &index) const;
    uint8_t cvtInterpMode(enum sm4_interpolation) const;
 
@@ -525,7 +525,7 @@ Converter::getDstOpndCount(enum sm4_opcode opcode) const
 
 TexTarget
 Converter::cvtTexTarget(enum sm4_target targ,
-                        enum sm4_opcode op, operation& opr) const
+                        enum sm4_opcode op, operation *opr) const
 {
    bool dc = (op == SM4_OPCODE_SAMPLE_C ||
               op == SM4_OPCODE_SAMPLE_C_LZ ||
@@ -534,10 +534,10 @@ Converter::cvtTexTarget(enum sm4_target targ,
 
    if (opr) {
       switch (targ) {
-      case SM4_TARGET_RAW_BUFFER:        opr = OP_LOAD; break;
-      case SM4_TARGET_STRUCTURED_BUFFER: opr = OP_SULD; break;
+      case SM4_TARGET_RAW_BUFFER:        *opr = OP_LOAD; break;
+      case SM4_TARGET_STRUCTURED_BUFFER: *opr = OP_SULD; break;
       default:
-         opr = OP_TEX;
+         *opr = OP_TEX;
          break;
       }
    }
@@ -835,11 +835,10 @@ Converter::inspectDeclaration(const sm4_dcl& dcl)
    case SM4_OPCODE_DCL_RESOURCE:
    {
       enum sm4_target targ = (enum sm4_target)dcl.dcl_resource.target;
-      operation dummy;
 
       assert(idx >= 0 && idx < NV50_IR_MAX_RESOURCES);
-      resourceType[idx][0] = cvtTexTarget(targ, SM4_OPCODE_SAMPLE, dummy);
-      resourceType[idx][1] = cvtTexTarget(targ, SM4_OPCODE_SAMPLE_C, dummy);
+      resourceType[idx][0] = cvtTexTarget(targ, SM4_OPCODE_SAMPLE, NULL);
+      resourceType[idx][1] = cvtTexTarget(targ, SM4_OPCODE_SAMPLE_C, NULL);
    }
       break;
    case SM4_OPCODE_DCL_CONSTANT_BUFFER:
