@@ -118,6 +118,7 @@ struct mesh
 
 		D3D11_SUBRESOURCE_DATA buffersd;
 		buffersd.pSysMem = data;
+		buffersd.SysMemPitch = buffersd.SysMemSlicePitch = 0;
 
 		ensure(dev->CreateBuffer(&bufferd, &buffersd, &buffer));
 		free(data);
