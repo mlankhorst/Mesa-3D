@@ -1764,7 +1764,7 @@ Converter::handleInstruction(unsigned int pos)
       condBBs.push(bb);
       joinBBs.push(bb);
 
-      mkFlow(OP_BRA, NULL, CC_NOT_P, src(0, 0));
+      mkFlow(OP_BRA, NULL, insn->insn.test_nz ? CC_NOT_P : CC_P, src(0, 0));
 
       setPosition(ifClause, true);
    }
@@ -1853,7 +1853,8 @@ Converter::handleInstruction(unsigned int pos)
    {
       BasicBlock *nextBB = new BasicBlock(func);
       BasicBlock *breakBB = reinterpret_cast<BasicBlock *>(breakBBs.peek().u.p);
-      mkFlow(OP_BREAK, breakBB, CC_P, src(0, 0));
+      mkFlow(OP_BREAK, breakBB,
+             insn->insn.test_nz ? CC_P : CC_NOT_P, src(0, 0));
       bb->cfg.attach(&breakBB->cfg, Graph::Edge::CROSS);
       bb->cfg.attach(&nextBB->cfg, Graph::Edge::FORWARD);
       setPosition(nextBB, true);
