@@ -619,6 +619,29 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 
 		struct pipe_vertex_element elements[D3D11_IA_VERTEX_INPUT_STRUCTURE_ELEMENT_COUNT];
 
+		unsigned offsets[D3D11_IA_VERTEX_INPUT_STRUCTURE_ELEMENT_COUNT];
+		enum pipe_format formats[D3D11_IA_VERTEX_INPUT_STRUCTURE_ELEMENT_COUNT];
+
+		offsets[0] = 0;
+		for (unsigned i = 0; i < count; ++i)
+		{
+			formats[i] = dxgi_to_pipe_format[input_element_descs[i].Format];
+
+			if(input_element_descs[i].AlignedByteOffset != D3D11_APPEND_ALIGNED_ELEMENT)
+			{
+				offsets[i] = input_element_descs[i].AlignedByteOffset;
+			}
+			else if (i > 0)
+			{
+				unsigned align = util_format_description(formats[i])->channel[0].size;
+				if (align & 7)
+					align = 32;
+				align = (align / 8) - 1;
+				offsets[i] = offsets[i - 1] + util_format_get_blocksize(formats[i - 1]);
+				offsets[i] = (offsets[i] + align) & ~align;
+			}
+		}
+
 		unsigned num_params_to_use = std::min(num_params, (unsigned)D3D11_IA_VERTEX_INPUT_STRUCTURE_ELEMENT_COUNT);
 		for(unsigned i = 0; i < num_params_to_use; ++i)
 		{
@@ -632,8 +655,8 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 			memset(&elements[i], 0, sizeof(elements[i]));
 			if(idx >= 0)
 			{
-				elements[i].src_format = dxgi_to_pipe_format[input_element_descs[idx].Format];
-				elements[i].src_offset = input_element_descs[idx].AlignedByteOffset;
+				elements[i].src_format = formats[idx];
+				elements[i].src_offset = offsets[idx];
 				elements[i].vertex_buffer_index = input_element_descs[idx].InputSlot;
 				elements[i].instance_divisor = input_element_descs[idx].InstanceDataStepRate;
 			}
