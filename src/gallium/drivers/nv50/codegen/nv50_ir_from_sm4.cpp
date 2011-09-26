@@ -115,6 +115,7 @@ private:
    Value *dst(const sm4_op&, int c, int i);
    void saveDst(int i, int c, Value *value);
    void saveDst(const sm4_op&, int c, Value *value, int i);
+   void saveFragDepth(operation op, Value *value);
 
    Value *interpolate(const sm4_op&, int c, int i);
 
@@ -746,6 +747,7 @@ Converter::parseSignature()
       case D3D_NAME_DEPTH_GREATER_EQUAL:
       case D3D_NAME_DEPTH_LESS_EQUAL:
          info.out[r].sn = TGSI_SEMANTIC_POSITION;
+         info.io.fragDepth = r;
          break;
       case D3D_NAME_CULL_DISTANCE:
          info.io.cullDistanceMask |= 1 << sm4.params_out[i].SemanticIndex;
@@ -769,6 +771,7 @@ Converter::parseSignature()
          break;
       case D3D_NAME_COVERAGE:
          info.out[r].sn = TGSI_SEMANTIC_SAMPLEMASK;
+         info.io.sampleMask = r;
          break;
       case D3D_NAME_SAMPLE_INDEX:
       default:
@@ -880,9 +883,31 @@ Converter::inspectDeclaration(const sm4_dcl& dcl)
       break;
    case SM4_OPCODE_DCL_OUTPUT_SGV:
    case SM4_OPCODE_DCL_OUTPUT_SIV:
-      if (dcl.sv == SM4_SV_POSITION)
-         if (prog->getType() == Program::TYPE_FRAGMENT)
-            info.prop.fp.writesDepth = TRUE;
+      switch (dcl.sv) {
+      case SM4_SV_POSITION:
+         assert(prog->getType() != Program::TYPE_FRAGMENT);
+         break;
+      default:
+         break;
+      }
+      switch (dcl.op->file) {
+      case SM4_FILE_OUTPUT_DEPTH_LESS_EQUAL:
+      case SM4_FILE_OUTPUT_DEPTH_GREATER_EQUAL:
+      case SM4_FILE_OUTPUT_DEPTH:
+         if (info.io.fragDepth < 0xff)
+            break;
+         idx = info.io.fragDepth = info.numOutputs++;
+         info.out[idx].sn = TGSI_SEMANTIC_POSITION;
+         break;
+      case SM4_FILE_OUTPUT_COVERAGE_MASK:
+         if (info.io.sampleMask < 0xff)
+            break;
+         idx = info.io.sampleMask = info.numOutputs++;
+         info.out[idx].sn = TGSI_SEMANTIC_SAMPLEMASK;
+         break;
+      default:
+         break;
+      }
       break;
    case SM4_OPCODE_DCL_OUTPUT:
       // handled in parseSignature
@@ -1337,6 +1362,11 @@ Converter::dst(const sm4_op &op, int c, int i)
       return getScratch();
    case SM4_FILE_NULL:
       return NULL;
+   case SM4_FILE_OUTPUT_DEPTH:
+   case SM4_FILE_OUTPUT_DEPTH_GREATER_EQUAL:
+   case SM4_FILE_OUTPUT_DEPTH_LESS_EQUAL:
+   case SM4_FILE_OUTPUT_COVERAGE_MASK:
+      return getScratch();
    case SM4_FILE_IMMEDIATE32:
    case SM4_FILE_IMMEDIATE64:
    case SM4_FILE_CONSTANT_BUFFER:
@@ -1349,6 +1379,17 @@ Converter::dst(const sm4_op &op, int c, int i)
       assert(!"invalid file");
       return NULL;
    }
+}
+
+void
+Converter::saveFragDepth(operation op, Value *value)
+{
+   if (op == OP_MIN || op == OP_MAX) {
+      Value *zIn;
+      zIn = mkOp1v(OP_RDSV, TYPE_F32, getSSA(), mkSysVal(SV_POSITION, 2));
+      value = mkOp2v(op, TYPE_F32, getSSA(), value, zIn);
+   }
+   oData.store(info.io.fragDepth, 2, NULL, value);
 }
 
 void
@@ -1385,6 +1426,18 @@ Converter::saveDst(const sm4_op &op, int c, Value *value, int s)
             st = mkStore(OP_WRSV, dTy, sym, getDstPtr(s, 0, 2), value);
          st->perPatch = phase ? 1 : 0;
       }
+      break;
+   case SM4_FILE_OUTPUT_DEPTH_GREATER_EQUAL:
+      saveFragDepth(OP_MAX, value);
+      break;
+   case SM4_FILE_OUTPUT_DEPTH_LESS_EQUAL:
+      saveFragDepth(OP_MIN, value);
+      break;
+   case SM4_FILE_OUTPUT_DEPTH:
+      saveFragDepth(OP_NOP, value);
+      break;
+   case SM4_FILE_OUTPUT_COVERAGE_MASK:
+      oData.store(info.io.sampleMask, 0, NULL, value);
       break;
    case SM4_FILE_IMMEDIATE32:
    case SM4_FILE_IMMEDIATE64:
