@@ -320,6 +320,10 @@ Converter::inferDstType(enum sm4_opcode op) const
    case SM4_OPCODE_FTOI:
       return TYPE_S32;
    case SM4_OPCODE_FTOU:
+   case SM4_OPCODE_EQ:
+   case SM4_OPCODE_GE:
+   case SM4_OPCODE_LT:
+   case SM4_OPCODE_NE:
       return TYPE_U32;
    case SM4_OPCODE_FTOD:
       return TYPE_F64;
@@ -729,11 +733,13 @@ Converter::parseSignature()
 
       switch (sm4.params_out[i].SystemValueType) {
       case D3D_NAME_UNDEFINED:
-         if (prog->getType() == Program::TYPE_FRAGMENT)
+         if (prog->getType() == Program::TYPE_FRAGMENT) {
             info.out[r].sn = TGSI_SEMANTIC_COLOR;
-         else
+            info.out[r].si = info.prop.fp.numColourResults++;
+         } else {
             info.out[r].sn = TGSI_SEMANTIC_GENERIC;
-         info.out[r].si = n++;
+            info.out[r].si = n++;
+         }
          break;
       case D3D_NAME_POSITION:
       case D3D_NAME_DEPTH:
@@ -1653,7 +1659,7 @@ Converter::handleInstruction(unsigned int pos)
 
    case SM4_OPCODE_MOVC:
       FOR_EACH_DST0_ENABLED_CHANNEL32(c)
-         mkCmp(OP_SLCT, CC_NEU, sTy, dst0[c], src(1, c), src(2, c),
+         mkCmp(OP_SLCT, CC_NE, TYPE_U32, dst0[c], src(1, c), src(2, c),
                src(0, c));
       break;
 
@@ -1700,7 +1706,8 @@ Converter::handleInstruction(unsigned int pos)
    {
       CondCode cc = cvtCondCode(opcode);
       FOR_EACH_DST0_ENABLED_CHANNEL32(c) {
-         mkCmp(op, cc, dTy, dst0[c], src(0, c), src(1, c), 0);
+         mkCmp(op, cc, sTy, dst0[c], src(0, c), src(1, c), NULL)->setType(
+            dTy, sTy);
       }
    }
       break;
