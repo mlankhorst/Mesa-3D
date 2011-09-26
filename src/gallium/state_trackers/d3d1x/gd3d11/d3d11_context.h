@@ -1229,31 +1229,36 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 		ID3D11DepthStencilView  *new_depth_stencil_view)
 	{
 		SYNCHRONIZED;
+
+		bool update = false;
+		unsigned i;
+
+		if (depth_stencil_view.p != new_depth_stencil_view) {
+			update = true;
+			depth_stencil_view = new_depth_stencil_view;
+		}
+
 		if(!new_render_target_views)
 			count = 0;
-		if(count == num_render_target_views)
-		{
-			for(unsigned i = 0; i < count; ++i)
-			{
-				if(new_render_target_views[i] != render_target_views[i].p)
-					goto changed;
+
+		for (i = 0; i < count && new_render_target_views[i]; ++i) {
+			if (new_render_target_views[i] != render_target_views[i].p) {
+				update = true;
+				render_target_views[i] = new_render_target_views[i];
 			}
-			return;
 		}
-changed:
-		depth_stencil_view = new_depth_stencil_view;
-		unsigned i;
-		for(i = 0; i < count; ++i)
-		{
-			render_target_views[i] = new_render_target_views[i];
-#if API >= 11
-			om_unordered_access_views[i] = (ID3D11UnorderedAccessView*)NULL;
-#endif
+		// assert that there are no gaps (need a dummy RTV if it's allowed)
+		for (unsigned j = i + 1; j < count; ++j)
+			assert(new_render_target_views[j] == NULL);
+		count = i;
+		if (count != num_render_target_views) {
+			update = true;
+			for (; i < num_render_target_views; ++i)
+				render_target_views[i] = (ID3D11RenderTargetView*)NULL;
 		}
-		for(; i < num_render_target_views; ++i)
-			render_target_views[i] = (ID3D11RenderTargetView*)NULL;
 		num_render_target_views = count;
-		set_framebuffer();
+		if (update)
+			set_framebuffer();
 	}
 
 	virtual void STDMETHODCALLTYPE OMGetRenderTargets(
