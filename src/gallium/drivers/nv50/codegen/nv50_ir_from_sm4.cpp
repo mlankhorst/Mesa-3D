@@ -103,7 +103,10 @@ private:
    void allocateValues();
    void exportOutputs();
 
+   void emitTex(Value *dst0[4], TexInstruction *, uint8_t swizzle[4]);
+   void handleLOAD(Value *dst0[4]);
    void handleSAMPLE(operation, Value *dst0[4]);
+   void handleQUERY(Value *dst0[4], enum TexQuery query);
    void handleDP(Value *dst0[4], int dim);
 
    Symbol *iSym(int i, int c);
@@ -558,6 +561,7 @@ Converter::cvtTexTarget(enum sm4_target targ,
    TARG_CASE_2(TEXTURE2DARRAY,    2D_ARRAY);
    TARG_CASE_1(TEXTURE2DMSARRAY,  2D_MS_ARRAY);
    TARG_CASE_2(TEXTURECUBEARRAY,  CUBE_ARRAY);
+   TARG_CASE_1(BUFFER,            BUFFER);
    TARG_CASE_1(RAW_BUFFER,        BUFFER);
    TARG_CASE_1(STRUCTURED_BUFFER, BUFFER);
    default:
@@ -1453,12 +1457,82 @@ Converter::saveDst(const sm4_op &op, int c, Value *value, int s)
    }
 }
 
+void
+Converter::emitTex(Value *dst0[4], TexInstruction *tex, uint8_t swizzle[4])
+{
+   Value *res[4] = { NULL, NULL, NULL, NULL };
+   unsigned int c, d;
+
+   for (c = 0; c < 4; ++c)
+      if (dst0[c])
+         tex->tex.mask |= 1 << swizzle[c];
+   for (d = 0, c = 0; c < 4; ++c)
+      if (tex->tex.mask & (1 << c))
+         tex->setDef(d++, (res[c] = getScratch()));
+
+   bb->insertTail(tex);
+
+   for (c = 0; c < 4; ++c) {
+      if (dst0[c]) {
+         assert(res[swizzle[c]]);
+         mkMov(dst0[c], res[swizzle[c]]);
+      }
+   }
+}
+
+void
+Converter::handleQUERY(Value *dst0[4], enum TexQuery query)
+{
+   TexInstruction *texi = new_TexInstruction(func, OP_TXQ);
+   texi->tex.query = query;
+
+   assert(insn->ops[2]->file == SM4_FILE_RESOURCE); // TODO: UAVs
+
+   const int rOp = (query == TXQ_DIMS) ? 2 : 1;
+   const int sOp = (query == TXQ_DIMS) ? 0 : 1;
+
+   const int tR = insn->ops[rOp]->indices[0].disp;
+
+   texi->setTexture(resourceType[tR][0], tR, 0);
+
+   texi->setSrc(0, src(sOp, 0)); // mip level or sample index
+
+   emitTex(dst0, texi, insn->ops[rOp]->swizzle);
+}
+
+void
+Converter::handleLOAD(Value *dst0[4])
+{
+   TexInstruction *texi = new_TexInstruction(func, OP_TXF);
+   unsigned int c;
+
+   const int tR = insn->ops[2]->indices[0].disp;
+
+   texi->setTexture(resourceType[tR][0], tR, 0);
+
+   for (c = 0; c < texi->tex.target.getArgCount(); ++c)
+      texi->setSrc(c, src(0, c));
+
+   if (texi->tex.target == TEX_TARGET_BUFFER) {
+      texi->tex.levelZero = true;
+   } else {
+      texi->setSrc(c++, src(0, 3));
+      for (c = 0; c < 3; ++c) {
+         texi->tex.offset[0][c] = insn->sample_offset[c];
+	 if (texi->tex.offset[0][c])
+            texi->tex.useOffsets = 1;
+      }
+   }
+
+   emitTex(dst0, texi, insn->ops[2]->swizzle);
+}
+
 // order of nv50 ir sources: x y z/layer lod/bias dc
 void
 Converter::handleSAMPLE(operation opr, Value *dst0[4])
 {
    TexInstruction *texi = new_TexInstruction(func, opr);
-   unsigned int c, d, s;
+   unsigned int c, s;
    Value *arg[4], *src0[4];
    Value *val;
    Value *lod = NULL, *dc = NULL;
@@ -1499,13 +1573,6 @@ Converter::handleSAMPLE(operation opr, Value *dst0[4])
          src0[c] = mkOp2v(OP_MUL, TYPE_F32, getSSA(), arg[c], val);
    }
 
-   for (c = 0, d = 0; c < 4; ++c) {
-      if (dst0[c]) {
-         texi->setDef(d++, dst0[c]);
-         texi->tex.mask |= 1 << c;
-      }
-   }
-
    for (s = 0; s < tgt.getArgCount(); ++s)
       texi->setSrc(s, src0[s]);
    if (lod)
@@ -1515,7 +1582,7 @@ Converter::handleSAMPLE(operation opr, Value *dst0[4])
 
    texi->setTexture(tgt, tR, tS);
 
-   bb->insertTail(texi);
+   emitTex(dst0, texi, insn->ops[2]->swizzle);
 }
 
 void
@@ -1913,8 +1980,8 @@ Converter::handleInstruction(unsigned int pos)
    {
       BasicBlock *nextBB = new BasicBlock(func);
       BasicBlock *breakBB = reinterpret_cast<BasicBlock *>(breakBBs.peek().u.p);
-      mkFlow(OP_BREAK, breakBB,
-             insn->insn.test_nz ? CC_P : CC_NOT_P, src(0, 0));
+      CondCode cc = insn->insn.test_nz ? CC_P : CC_NOT_P;
+      mkFlow(OP_BREAK, breakBB, cc, src(0, 0));
       bb->cfg.attach(&breakBB->cfg, Graph::Edge::CROSS);
       bb->cfg.attach(&nextBB->cfg, Graph::Edge::FORWARD);
       setPosition(nextBB, true);
@@ -1931,6 +1998,13 @@ Converter::handleInstruction(unsigned int pos)
    }
       break;
    case SM4_OPCODE_CONTINUEC:
+   {
+      BasicBlock *nextBB = new BasicBlock(func);
+      BasicBlock *contBB = reinterpret_cast<BasicBlock *>(loopBBs.peek().u.p);
+      mkFlow(OP_CONT, contBB, insn->insn.test_nz ? CC_P : CC_NOT_P, src(0, 0));
+      bb->cfg.attach(&contBB->cfg, Graph::Edge::BACK);
+      bb->cfg.attach(&nextBB->cfg, Graph::Edge::FORWARD);
+   }
       assert(!"CONTINUEC not implemented");
       break;
 
@@ -1942,16 +2016,20 @@ Converter::handleInstruction(unsigned int pos)
    case SM4_OPCODE_SAMPLE_B:
       handleSAMPLE(op, dst0);
       break;
+   case SM4_OPCODE_LD:
+   case SM4_OPCODE_LD_MS:
+      handleLOAD(dst0);
+      break;
 
    case SM4_OPCODE_GATHER4:
       assert(!"GATHER4 not implemented\n");
       break;
+
    case SM4_OPCODE_RESINFO:
-      assert(!"RESINFO not implemented\n");
+      handleQUERY(dst0, TXQ_DIMS);
       break;
-   case SM4_OPCODE_LD:
-   case SM4_OPCODE_LD_MS:
-      assert(!"LD,LD_MS not implemented\n");
+   case SM4_OPCODE_SAMPLE_POS:
+      handleQUERY(dst0, TXQ_SAMPLE_POSITION);
       break;
 
    case SM4_OPCODE_NOP:
