@@ -46,6 +46,7 @@ namespace std
 
 #include "galliumdxgi.h"
 #include <d3dcommon.h>
+#include <D3D11SDKLayers.h>
 
 extern "C"
 {
@@ -374,6 +375,9 @@ typedef refcnt_t dual_refcnt_t;
 
 #define IID_MAGIC_DELETE_THIS (*(const IID*)((intptr_t)-(int)(sizeof(IID) - 1)))
 
+static void *CreateGalliumD3D11Debug();
+static void *CreateGalliumD3D11InfoQueue();
+
 template<typename Base = IUnknown, typename RefCnt = refcnt_t>
 struct GalliumComObject : public Base
 {
@@ -428,6 +432,16 @@ struct GalliumComObject : public Base
 			// must be the virtual AddRef, since it is overridden by some classes
 			this->AddRef();
 			*ppvObject = this;
+			return S_OK;
+		}
+		else if (riid == IID_ID3D11Debug)
+		{
+			*ppvObject = CreateGalliumD3D11Debug();
+			return S_OK;
+		}
+		else if(riid == IID_ID3D11InfoQueue)
+		{
+			*ppvObject = CreateGalliumD3D11InfoQueue();
 			return S_OK;
 		}
 		else
@@ -1106,5 +1120,317 @@ public:
 		return size;
 	}
 };
+
+COM_INTERFACE(ID3D11Debug, IUnknown);
+
+class GalliumD3D11Debug : public GalliumComObject<ID3D11Debug>
+{
+private:
+	UINT feature_mask;
+	UINT present_delay;
+
+	IDXGISwapChain *swap_chain;
+
+public:
+	GalliumD3D11Debug()
+	{
+		fprintf(stderr, "CREATE: %s\n", __FUNCTION__);
+
+		feature_mask = 0;
+		present_delay = 1000;
+		swap_chain = NULL;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE SetFeatureMask(UINT Mask)
+	{
+		feature_mask = Mask;
+
+		return S_OK;
+	}
+
+	virtual UINT STDMETHODCALLTYPE GetFeatureMask()
+	{
+		return feature_mask;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE SetPresentPerRenderOpDelay(UINT Milliseconds)
+	{
+		present_delay = Milliseconds;
+
+		return S_OK;
+	}
+
+	virtual UINT STDMETHODCALLTYPE GetPresentPerRenderOpDelay()
+	{
+		return present_delay;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE SetSwapChain(IDXGISwapChain *pSwapChain)
+	{
+		swap_chain = pSwapChain;
+
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE GetSwapChain(IDXGISwapChain **ppSwapChain)
+	{
+		if (ppSwapChain)
+			*ppSwapChain = swap_chain;
+
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE ValidateContext(ID3D11DeviceContext *pContext)
+	{
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE ReportLiveDeviceObjects(D3D11_RLDO_FLAGS Flags)
+	{
+		return S_OK;
+	}
+
+	virtual HRESULT STDMETHODCALLTYPE ValidateContextForDispatch(ID3D11DeviceContext *pContext)
+	{
+		return S_OK;
+	}
+};
+
+COM_INTERFACE(ID3D11InfoQueue, IUnknown);
+
+class GalliumD3D11InfoQueue : public GalliumComObject<ID3D11InfoQueue>
+{
+private:
+	UINT64 msg_count_limit;
+	UINT64 msg_pass[2];
+	UINT64 msg_deny[2];
+	UINT64 msg_nr;
+
+	bool muted;
+
+public:
+	GalliumD3D11InfoQueue()
+	{
+		fprintf(stderr, "CREATE: %s\n", __FUNCTION__);
+
+		msg_count_limit = 1000;
+		msg_pass[0] =
+		msg_pass[1] = 0;
+		msg_deny[0] =
+		msg_deny[1] = 0;
+		msg_nr = 0;
+		muted = false;
+	}
+
+        virtual HRESULT STDMETHODCALLTYPE SetMessageCountLimit(UINT64 MessageCountLimit)
+	{
+		msg_count_limit = MessageCountLimit;
+
+		return S_OK;
+	}
+
+        virtual void STDMETHODCALLTYPE ClearStoredMessages(void)
+	{
+	}
+
+        virtual HRESULT STDMETHODCALLTYPE GetMessage(UINT64 MessageIndex,
+						     D3D11_MESSAGE *pMessage,
+						     SIZE_T *pMessageByteLength)
+	{
+		if (!pMessage)
+			return E_FAIL;
+		pMessage->Category = D3D11_MESSAGE_CATEGORY_APPLICATION_DEFINED;
+		pMessage->Severity = D3D11_MESSAGE_SEVERITY_INFO;
+		pMessage->ID = D3D11_MESSAGE_ID_D3D11_MESSAGES_END;
+		pMessage->pDescription = "fake message";
+		pMessage->DescriptionByteLength = 12;
+		if (pMessageByteLength)
+			*pMessageByteLength = sizeof(*pMessage);
+		return S_OK;
+	}
+
+        virtual UINT64 STDMETHODCALLTYPE GetNumMessagesAllowedByStorageFilter(void)
+	{
+		return msg_pass[0];
+	}
+
+        virtual UINT64 STDMETHODCALLTYPE GetNumMessagesDeniedByStorageFilter(void)
+	{
+		return msg_deny[0];
+	}
+
+        virtual UINT64 STDMETHODCALLTYPE GetNumStoredMessages(void)
+	{
+		return msg_nr;
+	}
+
+        virtual UINT64 STDMETHODCALLTYPE GetNumStoredMessagesAllowedByRetrievalFilter(void)
+	{
+		return msg_pass[1];
+	}
+
+        virtual UINT64 STDMETHODCALLTYPE GetNumMessagesDiscardedByMessageCountLimit(void)
+	{
+		return msg_deny[0];
+	}
+
+        virtual UINT64 STDMETHODCALLTYPE GetMessageCountLimit(void)
+	{
+		return msg_count_limit;
+	}
+
+        virtual HRESULT STDMETHODCALLTYPE AddStorageFilterEntries(D3D11_INFO_QUEUE_FILTER *pFilter)
+	{
+		return S_OK;
+	}
+
+        virtual HRESULT STDMETHODCALLTYPE GetStorageFilter(D3D11_INFO_QUEUE_FILTER *pFilter,
+							   SIZE_T *pFilterByteLength)
+	{
+		if (!pFilter)
+			return E_FAIL;
+		if (pFilterByteLength)
+			*pFilterByteLength = 0;
+		return S_OK;
+	}
+
+        virtual void STDMETHODCALLTYPE ClearStorageFilter(void)
+	{
+	}
+
+        virtual HRESULT STDMETHODCALLTYPE PushEmptyStorageFilter(void)
+	{
+		return S_OK;
+	}
+
+        virtual HRESULT STDMETHODCALLTYPE PushCopyOfStorageFilter(void)
+	{
+		return S_OK;
+	}
+
+        virtual HRESULT STDMETHODCALLTYPE PushStorageFilter(D3D11_INFO_QUEUE_FILTER *pFilter)
+	{
+		return S_OK;
+	}
+
+        virtual void STDMETHODCALLTYPE PopStorageFilter(void)
+	{
+	}
+
+        virtual UINT STDMETHODCALLTYPE GetStorageFilterStackSize(void)
+	{
+		return 0;
+	}
+
+        virtual HRESULT STDMETHODCALLTYPE AddRetrievalFilterEntries(D3D11_INFO_QUEUE_FILTER *pFilter)
+	{
+		return S_OK;
+	}
+
+        virtual HRESULT STDMETHODCALLTYPE GetRetrievalFilter(D3D11_INFO_QUEUE_FILTER *pFilter,
+							     SIZE_T *pFilterByteLength)
+	{
+		if (!pFilter)
+			return E_FAIL;
+		if (pFilterByteLength)
+			*pFilterByteLength = 0;
+		return S_OK;
+	}
+
+        virtual void STDMETHODCALLTYPE ClearRetrievalFilter(void)
+	{
+	}
+
+        virtual HRESULT STDMETHODCALLTYPE PushEmptyRetrievalFilter(void)
+	{
+		return S_OK;
+	}
+
+        virtual HRESULT STDMETHODCALLTYPE PushCopyOfRetrievalFilter(void)
+	{
+		return S_OK;
+	}
+
+        virtual HRESULT STDMETHODCALLTYPE PushRetrievalFilter(D3D11_INFO_QUEUE_FILTER *pFilter)
+	{
+		return S_OK;
+	}
+
+        virtual void STDMETHODCALLTYPE PopRetrievalFilter(void)
+	{
+	}
+
+        virtual UINT STDMETHODCALLTYPE GetRetrievalFilterStackSize(void)
+	{
+		return 0;
+	}
+
+        virtual HRESULT STDMETHODCALLTYPE AddMessage(D3D11_MESSAGE_CATEGORY Category,
+						     D3D11_MESSAGE_SEVERITY Severity,
+						     D3D11_MESSAGE_ID ID,
+						     LPCSTR pDescription)
+	{
+		return S_OK;
+	}
+
+        virtual HRESULT STDMETHODCALLTYPE AddApplicationMessage(D3D11_MESSAGE_SEVERITY Severity,
+								LPCSTR pDescription)
+	{
+		return S_OK;
+	}
+
+        virtual HRESULT STDMETHODCALLTYPE SetBreakOnCategory(D3D11_MESSAGE_CATEGORY Category,
+							     BOOL bEnable)
+	{
+		return S_OK;
+	}
+
+        virtual HRESULT STDMETHODCALLTYPE SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY Severity,
+							     BOOL bEnable)
+	{
+		return S_OK;
+	}
+
+        virtual HRESULT STDMETHODCALLTYPE SetBreakOnID(D3D11_MESSAGE_ID ID,
+						       BOOL bEnable)
+	{
+		return S_OK;
+	}
+
+        virtual BOOL STDMETHODCALLTYPE GetBreakOnCategory(D3D11_MESSAGE_CATEGORY Category)
+	{
+		return FALSE;
+	}
+
+        virtual BOOL STDMETHODCALLTYPE GetBreakOnSeverity(D3D11_MESSAGE_SEVERITY Severity)
+	{
+		return FALSE;
+	}
+
+	virtual BOOL STDMETHODCALLTYPE GetBreakOnID(D3D11_MESSAGE_ID ID)
+	{
+		return FALSE;
+	}
+
+        virtual void STDMETHODCALLTYPE SetMuteDebugOutput(BOOL bMute)
+	{
+		muted = bMute;
+	}
+
+        virtual BOOL STDMETHODCALLTYPE GetMuteDebugOutput(void)
+	{
+		return muted;
+	}
+};
+
+static void *CreateGalliumD3D11Debug()
+{
+	return new GalliumD3D11Debug();
+}
+
+static void *CreateGalliumD3D11InfoQueue()
+{
+	return new GalliumD3D11InfoQueue();
+}
 
 #endif /* D3D1XSTUTIL_H_ */
