@@ -499,20 +499,30 @@ void debug_dump_image(const char *prefix,
    if (f) {
       int i, x, y;
       int r, g, b;
+      uint8_t *dst;
       const uint8_t *ptr = (uint8_t *) data;
 
-      /* XXX this is a hack */
-      switch (format) {
-      case PIPE_FORMAT_B8G8R8A8_UNORM:
-         r = 2;
-         g = 1;
-         b = 0;
-         break;
-      default:
-         r = 0;
-         g = 1;
-         b = 1;
+      debug_printf("%s(%s, %s, %ux%u)\n",
+		   __FUNCTION__, filename,
+		   util_format_name(format), width, height);
+
+      if (format == PIPE_FORMAT_Z32_FLOAT) format = PIPE_FORMAT_R32_FLOAT;
+      if (format == PIPE_FORMAT_Z16_UNORM) format = PIPE_FORMAT_R16_UNORM;
+
+      if (!util_format_description(format)->unpack_rgba_8unorm) {
+         debug_printf("cannot unpack\n");
+         return;
       }
+      dst = MALLOC(width * height * 4);
+      if (!dst)
+         return;
+
+      util_format_description(format)->unpack_rgba_8unorm(dst, width * 4,
+                                                          ptr, stride,
+                                                          width, height);
+      r = 0;
+      g = 1;
+      b = 2;
 
       fprintf(f, "P6\n");
       fprintf(f, "# ppm-file created by osdemo.c\n");
@@ -523,13 +533,14 @@ void debug_dump_image(const char *prefix,
       f = fopen(filename, "ab");  /* reopen in binary append mode */
       for (y = 0; y < height; y++) {
          for (x = 0; x < width; x++) {
-            i = y * stride + x * cpp;
-            fputc(ptr[i + r], f); /* write red */
-            fputc(ptr[i + g], f); /* write green */
-            fputc(ptr[i + b], f); /* write blue */
+            i = y * width * 4 + x * 4;
+            fputc(dst[i + r], f); /* write red */
+            fputc(dst[i + g], f); /* write green */
+            fputc(dst[i + b], f); /* write blue */
          }
       }
       fclose(f);
+      FREE(dst);
    }
    else {
       fprintf(stderr, "Can't open %s for writing\n", filename);
