@@ -162,13 +162,15 @@ nvc0_query_begin(struct pipe_context *pipe, struct pipe_query *pq)
    struct nouveau_channel *chan = nvc0->screen->base.channel;
    struct nvc0_query *q = nvc0_query(pq);
 
+   const int index = 0; /* vertex stream */
+
    /* For occlusion queries we have to change the storage, because a previous
     * query might set the initial render conition to FALSE even *after* we re-
     * initialized it to TRUE.
     */
    if (q->type == PIPE_QUERY_OCCLUSION_COUNTER) {
-      q->offset += 16;
-      q->data += 16 / sizeof(*q->data);
+      q->offset += 32;
+      q->data += 32 / sizeof(*q->data);
       if (q->offset - q->base == NVC0_QUERY_ALLOC_SPACE)
          nvc0_query_allocate(nvc0, q, NVC0_QUERY_ALLOC_SPACE);
 
@@ -176,27 +178,28 @@ nvc0_query_begin(struct pipe_context *pipe, struct pipe_query *pq)
        *  query ?
        */
       q->data[1] = 1; /* initial render condition = TRUE */
+      q->data[4] = 0;
+      q->data[5] = 0;
    }
    if (!q->is64bit)
       q->data[0] = q->sequence++; /* the previously used one */
 
    switch (q->type) {
    case PIPE_QUERY_OCCLUSION_COUNTER:
+   case PIPE_QUERY_OCCLUSION_PREDICATE:
       IMMED_RING(chan, RING_3D(COUNTER_RESET), NVC0_3D_COUNTER_RESET_SAMPLECNT);
       IMMED_RING(chan, RING_3D(SAMPLECNT_ENABLE), 1);
       break;
-   case PIPE_QUERY_PRIMITIVES_GENERATED: /* store before & after instead ? */
-      IMMED_RING(chan, RING_3D(COUNTER_RESET),
-                 NVC0_3D_COUNTER_RESET_GENERATED_PRIMITIVES);
+   case PIPE_QUERY_PRIMITIVES_GENERATED:
+      nvc0_query_get(chan, q, 0x10, 0x09005002 | (index << 5));
       break;
    case PIPE_QUERY_PRIMITIVES_EMITTED:
-      IMMED_RING(chan, RING_3D(COUNTER_RESET),
-                 NVC0_3D_COUNTER_RESET_EMITTED_PRIMITIVES);
+      nvc0_query_get(chan, q, 0x10, 0x05805002 | (index << 5));
       break;
    case PIPE_QUERY_SO_STATISTICS:
-      BEGIN_RING_NI(chan, RING_3D(COUNTER_RESET), 2);
-      OUT_RING  (chan, NVC0_3D_COUNTER_RESET_EMITTED_PRIMITIVES);
-      OUT_RING  (chan, NVC0_3D_COUNTER_RESET_GENERATED_PRIMITIVES);
+   case PIPE_QUERY_SO_OVERFLOW_PREDICATE:
+      nvc0_query_get(chan, q, 0x20, 0x05805002 | (index << 5));
+      nvc0_query_get(chan, q, 0x30, 0x09005002 | (index << 5));
       break;
    case PIPE_QUERY_TIMESTAMP_DISJOINT:
    case PIPE_QUERY_TIME_ELAPSED:
@@ -247,6 +250,7 @@ nvc0_query_end(struct pipe_context *pipe, struct pipe_query *pq)
       nvc0_query_get(chan, q, 0, 0x05805002 | (index << 5));
       break;
    case PIPE_QUERY_SO_STATISTICS:
+   case PIPE_QUERY_SO_OVERFLOW_PREDICATE:
       nvc0_query_get(chan, q, 0x00, 0x05805002 | (index << 5));
       nvc0_query_get(chan, q, 0x10, 0x09005002 | (index << 5));
       break;
@@ -332,13 +336,19 @@ nvc0_query_result(struct pipe_context *pipe, struct pipe_query *pq,
    case PIPE_QUERY_OCCLUSION_COUNTER: /* u32 sequence, u32 count, u64 time */
       res32[0] = q->data[1];
       break;
+   case PIPE_QUERY_OCCLUSION_PREDICATE:
+      res8[0] = !!q->data[1];
+      break;
    case PIPE_QUERY_PRIMITIVES_GENERATED: /* u64 count, u64 time */
    case PIPE_QUERY_PRIMITIVES_EMITTED: /* u64 count, u64 time */
-      res64[0] = data64[0];
+      res64[0] = data64[0] - data64[2];
       break;
    case PIPE_QUERY_SO_STATISTICS:
-      res64[0] = data64[0];
-      res64[1] = data64[1];
+      res64[0] = data64[0] - data64[4];
+      res64[1] = data64[2] - data64[6];
+      break;
+   case PIPE_QUERY_SO_OVERFLOW_PREDICATE:
+      res8[0] = (data64[0] - data64[4]) != (data64[2] - data64[6]);
       break;
    case PIPE_QUERY_TIMESTAMP_DISJOINT: /* u32 sequence, u32 0, u64 time */
       res64[0] = 1000000000;
@@ -394,7 +404,8 @@ nvc0_render_condition(struct pipe_context *pipe,
    BEGIN_RING(chan, RING_3D(COND_ADDRESS_HIGH), 3);
    OUT_RELOCh(chan, q->bo, q->offset, NOUVEAU_BO_GART | NOUVEAU_BO_RD);
    OUT_RELOCl(chan, q->bo, q->offset, NOUVEAU_BO_GART | NOUVEAU_BO_RD);
-   OUT_RING  (chan, NVC0_3D_COND_MODE_RES_NON_ZERO);
+   OUT_RING  (chan, (mode & PIPE_RENDER_COND_INVERTED) ?
+	      NVC0_3D_COND_MODE_EQUAL : NVC0_3D_COND_MODE_RES_NON_ZERO);
 }
 
 void
