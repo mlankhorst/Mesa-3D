@@ -299,8 +299,13 @@ nvc0_validate_viewport(struct nvc0_context *nvc0)
     w = util_iround(vp->translate[0] + fabsf(vp->scale[0])) - x;
     h = util_iround(vp->translate[1] + fabsf(vp->scale[1])) - y;
 
+#ifdef NVC0_DEPTH_RANGE_OPENGL
     zmin = vp->translate[2] - fabsf(vp->scale[2]);
     zmax = vp->translate[2] + fabsf(vp->scale[2]);
+#else
+    zmin = vp->translate[2];
+    zmax = vp->translate[2] + vp->scale[2];
+#endif
 
     BEGIN_RING(chan, RING_3D(VIEWPORT_HORIZ(0)), 2);
     OUT_RING  (chan, (w << 16) | x);
