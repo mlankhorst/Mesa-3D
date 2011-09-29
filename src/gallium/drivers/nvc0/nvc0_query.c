@@ -130,6 +130,7 @@ nvc0_query_create(struct pipe_context *pipe, unsigned type)
    q->is64bit = (type == PIPE_QUERY_PRIMITIVES_GENERATED ||
                  type == PIPE_QUERY_PRIMITIVES_EMITTED ||
                  type == PIPE_QUERY_SO_STATISTICS ||
+                 type == PIPE_QUERY_SO_OVERFLOW_PREDICATE ||
                  type == PIPE_QUERY_PIPELINE_STATISTICS);
    q->type = type;
 
@@ -178,7 +179,7 @@ nvc0_query_begin(struct pipe_context *pipe, struct pipe_query *pq)
        *  query ?
        */
       q->data[1] = 1; /* initial render condition = TRUE */
-      q->data[4] = 0;
+      q->data[4] = q->sequence + 1; /* COND_MODE_EQUAL also checks sequence */
       q->data[5] = 0;
    }
    if (!q->is64bit)
@@ -259,6 +260,8 @@ nvc0_query_end(struct pipe_context *pipe, struct pipe_query *pq)
       nvc0_query_get(chan, q, 0, 0x00005002);
       break;
    case PIPE_QUERY_GPU_FINISHED:
+      /* increment sequence here, 'query_begin' probably wasn't called */
+      q->data[0] = q->sequence++;
       nvc0_query_get(chan, q, 0, 0x1000f010);
       break;
    case PIPE_QUERY_PIPELINE_STATISTICS:
@@ -311,11 +314,6 @@ nvc0_query_result(struct pipe_context *pipe, struct pipe_query *pq,
    uint64_t *data64 = (uint64_t *)q->data;
    unsigned i;
 
-   if (q->type == PIPE_QUERY_GPU_FINISHED) {
-      res8[0] = nvc0_query_ready(q);
-      return TRUE;
-   }
-
    if (!q->ready) /* update ? */
       q->ready = nvc0_query_ready(q);
    if (!q->ready) {
@@ -325,18 +323,23 @@ nvc0_query_result(struct pipe_context *pipe, struct pipe_query *pq,
             FIRE_RING(chan);
          return FALSE;
       }
-      debug_printf("waiting for query ...");
+      debug_printf("waiting for query ...\n");
       if (!nvc0_query_wait(q))
          return FALSE;
-      debug_printf(" ready\n");
+      debug_printf("... ready\n");
    }
    q->ready = TRUE;
 
    switch (q->type) {
+   case PIPE_QUERY_GPU_FINISHED:
+      res32[0] = 0;
+      res8[0] = TRUE;
+      break;
    case PIPE_QUERY_OCCLUSION_COUNTER: /* u32 sequence, u32 count, u64 time */
       res32[0] = q->data[1];
       break;
    case PIPE_QUERY_OCCLUSION_PREDICATE:
+      res32[0] = 0;
       res8[0] = !!q->data[1];
       break;
    case PIPE_QUERY_PRIMITIVES_GENERATED: /* u64 count, u64 time */
@@ -352,6 +355,7 @@ nvc0_query_result(struct pipe_context *pipe, struct pipe_query *pq,
       break;
    case PIPE_QUERY_TIMESTAMP_DISJOINT: /* u32 sequence, u32 0, u64 time */
       res64[0] = 1000000000;
+      res64[1] = 0;
       res8[8] = (data64[0] == data64[2]) ? FALSE : TRUE;
       break;
    case PIPE_QUERY_TIME_ELAPSED:
