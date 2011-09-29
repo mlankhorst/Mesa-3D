@@ -73,33 +73,52 @@ nvc0_validate_fb(struct nvc0_context *nvc0)
     MARK_RING(chan, 9 * fb->nr_cbufs, 2 * fb->nr_cbufs);
 
     for (i = 0; i < fb->nr_cbufs; ++i) {
-        struct nv50_miptree *mt = nv50_miptree(fb->cbufs[i]->texture);
         struct nv50_surface *sf = nv50_surface(fb->cbufs[i]);
-        struct nouveau_bo *bo = mt->base.bo;
-        uint32_t offset = sf->offset;
+        struct nv04_resource *res = nv04_resource(sf->base.texture);
+        struct nouveau_bo *bo = res->bo;
+        uint32_t offset = sf->offset + res->offset;
 
         BEGIN_RING(chan, RING_3D(RT_ADDRESS_HIGH(i)), 9);
-        OUT_RELOCh(chan, bo, offset, NOUVEAU_BO_VRAM | NOUVEAU_BO_RDWR);
-        OUT_RELOCl(chan, bo, offset, NOUVEAU_BO_VRAM | NOUVEAU_BO_RDWR);
-        OUT_RING  (chan, sf->width);
-        OUT_RING  (chan, sf->height);
-        OUT_RING  (chan, nvc0_format_table[sf->base.format].rt);
-        OUT_RING  (chan, (mt->layout_3d << 16) |
-                   mt->level[sf->base.u.tex.level].tile_mode);
-        OUT_RING  (chan, sf->base.u.tex.first_layer + sf->depth);
-        OUT_RING  (chan, mt->layer_stride >> 2);
-        OUT_RING  (chan, sf->base.u.tex.first_layer);
+        OUT_RELOCh(chan, res->bo, offset, res->domain | NOUVEAU_BO_RDWR);
+        OUT_RELOCl(chan, res->bo, offset, res->domain | NOUVEAU_BO_RDWR);
+        if (likely(nouveau_bo_tile_layout(bo))) {
+           struct nv50_miptree *mt = nv50_miptree(sf->base.texture);
 
-        ms_mode = mt->ms_mode;
+           OUT_RING(chan, sf->width);
+           OUT_RING(chan, sf->height);
+           OUT_RING(chan, nvc0_format_table[sf->base.format].rt);
+           OUT_RING(chan, (mt->layout_3d << 16) |
+                    mt->level[sf->base.u.tex.level].tile_mode);
+           OUT_RING(chan, sf->base.u.tex.first_layer + sf->depth);
+           OUT_RING(chan, mt->layer_stride >> 2);
+           OUT_RING(chan, sf->base.u.tex.first_layer);
 
-        if (mt->base.status & NOUVEAU_BUFFER_STATUS_GPU_READING)
+           ms_mode = mt->ms_mode;
+        } else {
+           if (res->base.target == PIPE_BUFFER) {
+              OUT_RING(chan, 262144);
+              OUT_RING(chan, 1);
+           } else {
+              OUT_RING(chan, nv50_miptree(sf->base.texture)->level[0].pitch);
+              OUT_RING(chan, sf->height);
+           }
+           OUT_RING(chan, nvc0_format_table[sf->base.format].rt);
+           OUT_RING(chan, 1 << 12);
+           OUT_RING(chan, 0);
+           OUT_RING(chan, 0);
+           OUT_RING(chan, 0);
+
+           assert(!fb->zsbuf);
+        }
+
+        if (res->status & NOUVEAU_BUFFER_STATUS_GPU_READING)
            serialize = TRUE;
-        mt->base.status |=  NOUVEAU_BUFFER_STATUS_GPU_WRITING;
-        mt->base.status &= ~NOUVEAU_BUFFER_STATUS_GPU_READING;
+        res->status |=  NOUVEAU_BUFFER_STATUS_GPU_WRITING;
+        res->status &= ~NOUVEAU_BUFFER_STATUS_GPU_READING;
 
         /* only register for writing, otherwise we'd always serialize here */
-        nvc0_bufctx_add_resident(nvc0, NVC0_BUFCTX_FRAME, &mt->base,
-                                 NOUVEAU_BO_VRAM | NOUVEAU_BO_WR);
+        nvc0_bufctx_add_resident(nvc0, NVC0_BUFCTX_FRAME, res,
+                                 res->domain | NOUVEAU_BO_WR);
     }
 
     if (fb->zsbuf) {
@@ -146,6 +165,60 @@ nvc0_validate_fb(struct nvc0_context *nvc0)
        BEGIN_RING(chan, RING_3D(SERIALIZE), 1);
        OUT_RING  (chan, 0);
     }
+}
+
+static void
+nvc0_validate_images(struct nvc0_context *nvc0)
+{
+   struct nouveau_channel *chan = nvc0->screen->base.channel;
+   unsigned i;
+
+   nvc0_bufctx_reset(nvc0, NVC0_BUFCTX_IMAGES);
+
+   for (i = 0; i < nvc0->num_images; ++i) {
+      struct nv50_surface *sf = nvc0->image[i];
+      struct nv04_resource *res = nv04_resource(sf->base.texture);
+      struct nouveau_bo *bo = res->bo;
+      uint32_t offset = sf->offset + res->offset;
+      uint8_t format = nvc0_format_table[sf->base.format].rt;
+
+      format <<= (format >= 0xc0) ? 4 : 12;
+
+      BEGIN_RING(chan, RING_3D(IMAGE_ADDRESS_HIGH(i)), 6);
+      OUT_RELOCh(chan, res->bo, offset, res->domain | NOUVEAU_BO_RDWR);
+      OUT_RELOCl(chan, res->bo, offset, res->domain | NOUVEAU_BO_RDWR);
+      if (likely(nouveau_bo_tile_layout(bo))) {
+         struct nv50_miptree *mt = nv50_miptree(sf->base.texture);
+
+         OUT_RING(chan, sf->width);
+         OUT_RING(chan, sf->height);
+         OUT_RING(chan, format);
+         OUT_RING(chan, mt->level[sf->base.u.tex.level].tile_mode);
+      } else {
+         if (res->base.target == PIPE_BUFFER) {
+            OUT_RING(chan, 262144);
+            OUT_RING(chan, (1 << 20) | 1);
+         } else {
+            OUT_RING(chan, nv50_miptree(sf->base.texture)->level[0].pitch);
+            OUT_RING(chan, (1 << 20) | sf->height);
+         }
+         OUT_RING(chan, format);
+         OUT_RING(chan, 0);
+      }
+
+      nvc0_bufctx_add_resident(nvc0, NVC0_BUFCTX_IMAGES, res,
+                               res->domain | NOUVEAU_BO_RDWR);
+   }
+   for (; i < nvc0->state.num_images; ++i) {
+      BEGIN_RING(chan, RING_3D(IMAGE_ADDRESS_HIGH(i)), 6);
+      OUT_RING  (chan, 0);
+      OUT_RING  (chan, 0);
+      OUT_RING  (chan, 0);
+      OUT_RING  (chan, 0);
+      OUT_RING  (chan, 0);
+      OUT_RING  (chan, 0);
+   }
+   nvc0->state.num_images = nvc0->num_images;
 }
 
 static void

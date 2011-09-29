@@ -51,12 +51,14 @@
 #define NVC0_NEW_SAMPLERS     (1 << 20)
 #define NVC0_NEW_TFB          (1 << 21)
 #define NVC0_NEW_TFB_BUFFERS  (1 << 22)
+#define NVC0_NEW_IMAGES       (1 << 23)
 
 #define NVC0_BUFCTX_CONSTANT 0
 #define NVC0_BUFCTX_FRAME    1
 #define NVC0_BUFCTX_VERTEX   2
 #define NVC0_BUFCTX_TEXTURES 3
-#define NVC0_BUFCTX_COUNT    4
+#define NVC0_BUFCTX_IMAGES   4
+#define NVC0_BUFCTX_COUNT    5
 
 struct nvc0_context {
    struct nouveau_context base;
@@ -78,6 +80,7 @@ struct nvc0_context {
       uint8_t num_vtxelts;
       uint8_t num_textures[5];
       uint8_t num_samplers[5];
+      uint8_t num_images;
       uint8_t tls_required; /* bitmask of shader types using l[] */
       uint8_t c14_bound; /* whether immediate array constbuf is bound */
       uint16_t scissor;
@@ -127,6 +130,9 @@ struct nvc0_context {
    struct pipe_resource *tfbbuf[4];
    unsigned num_tfbbufs;
    unsigned tfb_offset[4];
+
+   unsigned num_images;
+   struct nv50_surface *image[8];
 
    struct draw_context *draw;
 };
