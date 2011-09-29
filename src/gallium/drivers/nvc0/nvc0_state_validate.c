@@ -404,7 +404,7 @@ nvc0_constbufs_validate(struct nvc0_context *nvc0)
          }
 
          if (!nouveau_resource_mapped_by_gpu(&res->base)) {
-            if (i == 0) {
+            if (i == 0 && 0) {
                base = s << 16;
                bo = nvc0->screen->uniforms;
 
@@ -418,12 +418,12 @@ nvc0_constbufs_validate(struct nvc0_context *nvc0)
             } else {
                nouveau_buffer_migrate(&nvc0->base, res, NOUVEAU_BO_VRAM);
                bo = res->bo;
-
-               BEGIN_RING(chan, RING_3D(MEM_BARRIER), 1);
-               OUT_RING  (chan, 0x1111);
+               base = res->offset;
+               nvc0_resource_fence(res, NOUVEAU_BO_RD);
             }
          } else {
             bo = res->bo;
+            base = res->offset;
             if (i == 0)
                nvc0->state.uniform_buffer_bound[s] = 0;
          }
