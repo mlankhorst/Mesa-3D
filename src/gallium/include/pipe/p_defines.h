@@ -382,13 +382,14 @@ enum pipe_transfer_usage {
  * Query object types
  */
 #define PIPE_QUERY_OCCLUSION_COUNTER     0
-#define PIPE_QUERY_PRIMITIVES_GENERATED  1
-#define PIPE_QUERY_PRIMITIVES_EMITTED    2
-#define PIPE_QUERY_TIME_ELAPSED          3
-#define PIPE_QUERY_SO_STATISTICS         5
-#define PIPE_QUERY_GPU_FINISHED          6
+#define PIPE_QUERY_OCCLUSION_PREDICATE   1
+#define PIPE_QUERY_PRIMITIVES_GENERATED  2
+#define PIPE_QUERY_PRIMITIVES_EMITTED    3
+#define PIPE_QUERY_SO_STATISTICS         4
+#define PIPE_QUERY_SO_OVERFLOW_PREDICATE 5
+#define PIPE_QUERY_TIME_ELAPSED          6
 #define PIPE_QUERY_TIMESTAMP_DISJOINT    7
-#define PIPE_QUERY_OCCLUSION_PREDICATE   8
+#define PIPE_QUERY_GPU_FINISHED          8
 #define PIPE_QUERY_PIPELINE_STATISTICS   9
 #define PIPE_QUERY_TYPES                10
 
@@ -400,7 +401,7 @@ enum pipe_transfer_usage {
 #define PIPE_RENDER_COND_NO_WAIT           1
 #define PIPE_RENDER_COND_BY_REGION_WAIT    2
 #define PIPE_RENDER_COND_BY_REGION_NO_WAIT 3
-
+#define PIPE_RENDER_COND_INVERTED          4
 
 /**
  * Point sprite coord modes
