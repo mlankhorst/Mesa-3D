@@ -1609,6 +1609,10 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 	{
 		SYNCHRONIZED;
 
+		fprintf(stderr, "\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
+		fprintf(stderr, "WARNING: deferred contexts not implemented\n");
+		fprintf(stderr, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\n");
+
 		// TODO: this will have to be implemented using a new Gallium util module
 		return E_NOTIMPL;
 
