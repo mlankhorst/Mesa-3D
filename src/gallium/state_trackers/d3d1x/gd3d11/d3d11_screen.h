@@ -488,6 +488,14 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 	{
 		SYNCHRONIZED;
 
+		if (depth_stencil_state_desc->FrontFace.StencilPassOp >= D3D11_STENCIL_OP_COUNT ||
+		    depth_stencil_state_desc->FrontFace.StencilFailOp >= D3D11_STENCIL_OP_COUNT ||
+		    depth_stencil_state_desc->FrontFace.StencilDepthFailOp >= D3D11_STENCIL_OP_COUNT ||
+		    depth_stencil_state_desc->BackFace.StencilPassOp >= D3D11_STENCIL_OP_COUNT ||
+		    depth_stencil_state_desc->BackFace.StencilFailOp >= D3D11_STENCIL_OP_COUNT ||
+		    depth_stencil_state_desc->BackFace.StencilDepthFailOp >= D3D11_STENCIL_OP_COUNT)
+			return E_INVALIDARG;
+
 		pipe_depth_stencil_alpha_state state;
 		memset(&state, 0, sizeof(state));
 		state.depth.enabled = !!depth_stencil_state_desc->DepthEnable;
