@@ -1005,9 +1005,10 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 #endif
 		SYNCHRONIZED;
 
+		const struct pipe_resource* resource = ((GalliumD3D11Resource<>*)iresource)->resource;
+
 		if(!desc)
 		{
-			struct pipe_resource* resource = ((GalliumD3D11Resource<>*)iresource)->resource;
 			init_pipe_to_dxgi_format();
 			memset(&def_desc, 0, sizeof(def_desc));
 			def_desc.Format = pipe_to_dxgi_format[resource->format];
@@ -1054,7 +1055,7 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 		memset(&templat, 0, sizeof(templat));
 		if(invalid(format >= DXGI_FORMAT_COUNT))
 			return E_INVALIDARG;
-		templat.format = dxgi_to_pipe_format[desc->Format];
+		templat.format = (desc->Format == DXGI_FORMAT_UNKNOWN) ? resource->format : dxgi_to_pipe_format[desc->Format];
 		if(!templat.format)
 			return E_NOTIMPL;
 		templat.swizzle_r = PIPE_SWIZZLE_RED;
@@ -1119,10 +1120,11 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 	{
 		SYNCHRONIZED;
 
+		const struct pipe_resource* resource = ((GalliumD3D11Resource<>*)iresource)->resource;
+
 		D3D11_RENDER_TARGET_VIEW_DESC def_desc;
 		if(!desc)
 		{
-			struct pipe_resource* resource = ((GalliumD3D11Resource<>*)iresource)->resource;
 			init_pipe_to_dxgi_format();
 			memset(&def_desc, 0, sizeof(def_desc));
 			def_desc.Format = pipe_to_dxgi_format[resource->format];
@@ -1165,7 +1167,7 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 		memset(&templat, 0, sizeof(templat));
 		if(invalid(desc->format >= DXGI_FORMAT_COUNT))
 			return E_INVALIDARG;
-		templat.format = dxgi_to_pipe_format[desc->Format];
+		templat.format = (desc->Format == DXGI_FORMAT_UNKNOWN) ? resource->format : dxgi_to_pipe_format[desc->Format];
 		if(!templat.format)
 			return E_NOTIMPL;
 		templat.usage = PIPE_BIND_RENDER_TARGET;
@@ -1213,10 +1215,11 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 	{
 		SYNCHRONIZED;
 
+		const struct pipe_resource* resource = ((GalliumD3D11Resource<>*)iresource)->resource;
+
 		D3D11_DEPTH_STENCIL_VIEW_DESC def_desc;
 		if(!desc)
 		{
-			struct pipe_resource* resource = ((GalliumD3D11Resource<>*)iresource)->resource;
 			init_pipe_to_dxgi_format();
 			memset(&def_desc, 0, sizeof(def_desc));
 			def_desc.Format = pipe_to_dxgi_format[resource->format];
@@ -1251,7 +1254,7 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 		memset(&templat, 0, sizeof(templat));
 		if(invalid(desc->format >= DXGI_FORMAT_COUNT))
 			return E_INVALIDARG;
-		templat.format = dxgi_to_pipe_format[desc->Format];
+		templat.format = (desc->Format == DXGI_FORMAT_UNKNOWN) ? resource->format : dxgi_to_pipe_format[desc->Format];
 		if(!templat.format)
 			return E_NOTIMPL;
 		templat.usage = PIPE_BIND_DEPTH_STENCIL;
