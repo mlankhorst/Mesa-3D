@@ -98,6 +98,8 @@ struct GalliumD3D11Object : public GalliumD3D11DeviceChild<Base>
 template<> \
 GalliumD3D11Object<ID3D11##name, void>::~GalliumD3D11Object() \
 { \
+	if (!object) \
+		return; \
 	DX10_ONLY(device->Unbind##name(this)); \
 	device->immediate_pipe->delete_##gallium##_state(device->immediate_pipe, object); \
 }
@@ -223,9 +225,18 @@ struct GalliumD3D11Shader : public GalliumD3D11Object<Base>
 	std::vector<int> slot_to_resource;
 	std::vector<int> slot_to_sampler;
 
+	void *so_state; // stream output cso
+
 	GalliumD3D11Shader(GalliumD3D11Screen* device, void* object)
-	: GalliumD3D11Object<Base>(device, object)
+	: GalliumD3D11Object<Base>(device, object),
+	  so_state(NULL)
 	{}
+
+	~GalliumD3D11Shader()
+	{
+		if (so_state)
+			this->device->immediate_pipe->delete_stream_output_state(this->device->immediate_pipe, so_state);
+	}
 };
 
 typedef GalliumD3D11Shader<ID3D11VertexShader> GalliumD3D11VertexShader;
