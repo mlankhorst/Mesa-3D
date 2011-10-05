@@ -311,8 +311,15 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 		int support = format_support[format];
 		if(support < 0)
 		{
-			unsigned buffer = D3D11_FORMAT_SUPPORT_BUFFER | D3D11_FORMAT_SUPPORT_IA_VERTEX_BUFFER | D3D11_FORMAT_SUPPORT_IA_INDEX_BUFFER;
-			unsigned sampler_view = D3D11_FORMAT_SUPPORT_SHADER_SAMPLE | D3D11_FORMAT_SUPPORT_MIP | D3D11_FORMAT_SUPPORT_MIP_AUTOGEN;
+			const unsigned buffer =
+				D3D11_FORMAT_SUPPORT_BUFFER |
+				D3D11_FORMAT_SUPPORT_IA_VERTEX_BUFFER |
+				D3D11_FORMAT_SUPPORT_IA_INDEX_BUFFER;
+			const unsigned sampler_view =
+				D3D11_FORMAT_SUPPORT_SHADER_LOAD |
+				D3D11_FORMAT_SUPPORT_SHADER_SAMPLE |
+				D3D11_FORMAT_SUPPORT_MIP |
+				D3D11_FORMAT_SUPPORT_MIP_AUTOGEN;
 			if(util_format_is_depth_or_stencil(format))
 				sampler_view |= D3D11_FORMAT_SUPPORT_SHADER_SAMPLE_COMPARISON;
 
