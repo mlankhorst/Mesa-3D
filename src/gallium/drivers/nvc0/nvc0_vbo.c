@@ -71,7 +71,11 @@ nvc0_vertex_state_create(struct pipe_context *pipe,
         so->element[i].pipe = elements[i];
         so->element[i].state = nvc0_format_table[fmt].vtx;
 
-        if (!so->element[i].state) {
+        if (unlikely(!so->element[i].state)) {
+            if (ve->src_format == PIPE_FORMAT_NONE) {
+                so->element[i].state = 0x3a400040;
+                continue;
+            }
             switch (util_format_get_nr_components(fmt)) {
             case 1: fmt = PIPE_FORMAT_R32_FLOAT; break;
             case 2: fmt = PIPE_FORMAT_R32G32_FLOAT; break;
@@ -327,6 +331,8 @@ nvc0_vertex_arrays_validate(struct nvc0_context *nvc0)
    for (; i < nvc0->state.num_vtxelts; ++i) {
       BEGIN_RING(chan, RING_3D(VERTEX_ATTRIB_FORMAT(i)), 1);
       OUT_RING  (chan, NVC0_3D_VERTEX_ATTRIB_INACTIVE);
+      if (unlikely(nvc0->state.instance_elts & (1 << i)))
+         IMMED_RING(chan, RING_3D(VERTEX_ARRAY_PER_INSTANCE(i)), 0);
       BEGIN_RING(chan, RING_3D(VERTEX_ARRAY_FETCH(i)), 1);
       OUT_RING  (chan, 0);
    }
