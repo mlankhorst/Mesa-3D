@@ -350,6 +350,7 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 				pipe->bind_fs_state(pipe, shader_cso);
 				break;
 			case PIPE_SHADER_GEOMETRY:
+				pipe->bind_stream_output_state(pipe, shader ? shader->so_state : NULL);
 				pipe->bind_gs_state(pipe, shader_cso);
 				break;
 #if API >= 11
@@ -1332,33 +1333,36 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 		const unsigned *new_offsets)
 	{
 		SYNCHRONIZED;
-		unsigned i;
+		unsigned i, new_count;
 		if(!new_so_targets)
 			count = 0;
-		bool changed = false;
-		for(i = 0; i < count; ++i)
+		bool update = false;
+		for(new_count = 0, i = 0; i < count; ++i)
 		{
 			ID3D11Buffer* buffer = new_so_targets[i];
-			if(buffer != so_targets[i].p || new_offsets[i] != so_offsets[i])
-			{
-				so_buffers[i] = buffer ? ((GalliumD3D11Buffer*)buffer)->resource : 0;
-				so_targets[i] = buffer;
-				so_offsets[i] = new_offsets[i];
-				changed = true;
-			}
+
+			so_offsets[i] = new_offsets[i];
+			if (buffer == so_targets[i].p && new_offsets[i] == (unsigned)-1)
+				continue;
+			update = true;
+
+			so_targets[i] = buffer;
+			so_buffers[i] = buffer ? ((GalliumD3D11Buffer*)buffer)->resource : 0;
+			if (so_buffers[i])
+				new_count = i + 1;
 		}
 		for(; i < D3D11_SO_BUFFER_SLOT_COUNT; ++i)
 		{
 			if(so_targets[i].p || so_offsets[i])
 			{
-				changed = true;
+				update = true;
 				so_targets[i] = (ID3D11Buffer*)0;
 				so_offsets[i] = 0;
 			}
 		}
-		num_so_targets = count;
+		num_so_targets = new_count;
 
-		if(changed && caps.so)
+		if(update && caps.so)
 			pipe->set_stream_output_buffers(pipe, so_buffers, (int*)so_offsets, num_so_targets);
 	}
 
@@ -1747,8 +1751,12 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 				pipe->set_constant_buffer(pipe, s, i, constant_buffers[s][i].p ? constant_buffers[s][i].p->resource : 0);
 		}
 
-		if(caps.so)
-			pipe->set_stream_output_buffers(pipe, so_buffers, (int*)so_offsets, num_so_targets);
+		if(caps.so && shaders[D3D11_STAGE_GS].p) {
+			// reenable stream-output
+			pipe->bind_stream_output_state(pipe, shaders[D3D11_STAGE_GS].p->so_state);
+			// XXX: but we don't want to reset the offsets, so don't unbind/rebind the buffers ...
+			// pipe->set_stream_output_buffers(pipe, so_buffers, (int*)so_offsets, num_so_targets);
+		}
 
 		update_flags |= (1 << (UPDATE_SAMPLERS_SHIFT + D3D11_STAGE_VS)) | (1 << (UPDATE_VIEWS_SHIFT + D3D11_STAGE_VS));
 		update_flags |= (1 << (UPDATE_SAMPLERS_SHIFT + D3D11_STAGE_GS)) | (1 << (UPDATE_VIEWS_SHIFT + D3D11_STAGE_GS));
