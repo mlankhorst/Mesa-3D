@@ -931,6 +931,10 @@ nv50_ir_init_prog_info(struct nv50_ir_prog_info *info)
       info->prop.tp.domain = PIPE_PRIM_MAX;
       info->prop.tp.outputPrim = PIPE_PRIM_MAX;
    }
+   if (info->type == PIPE_SHADER_GEOMETRY) {
+      info->prop.gp.instanceCount = 1;
+      info->prop.gp.maxVertices = 1;
+   }
    info->io.clipDistance = 0xff;
    info->io.pointSize = 0xff;
    info->io.edgeFlagIn = 0xff;
