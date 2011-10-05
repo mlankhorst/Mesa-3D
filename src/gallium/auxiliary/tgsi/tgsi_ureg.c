@@ -1578,6 +1578,7 @@ void *ureg_create_shader( struct ureg_program *ureg,
                           struct pipe_context *pipe )
 {
    struct pipe_shader_state state;
+   memset(&state, 0, sizeof(state));
 
    state.tokens = ureg_finalize(ureg);
    if(!state.tokens)
