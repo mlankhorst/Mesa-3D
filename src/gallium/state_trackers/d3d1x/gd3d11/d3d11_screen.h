@@ -176,6 +176,19 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 #endif
 	}
 
+	virtual ULONG STDMETHODCALLTYPE Release()
+	{
+		ULONG r = release();
+		fprintf(stderr, "SCREEN: Release: %u\n", r);
+		return r;
+	}
+	virtual ULONG STDMETHODCALLTYPE AddRef()
+	{
+		ULONG r = add_ref();
+		fprintf(stderr, "SCREEN: AddRef: %u\n", r);
+		return r;
+	}
+
 	virtual D3D_FEATURE_LEVEL STDMETHODCALLTYPE GetFeatureLevel(void)
 	{
 		return feature_level;
@@ -311,11 +324,11 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 		int support = format_support[format];
 		if(support < 0)
 		{
-			const unsigned buffer =
+			unsigned buffer =
 				D3D11_FORMAT_SUPPORT_BUFFER |
 				D3D11_FORMAT_SUPPORT_IA_VERTEX_BUFFER |
 				D3D11_FORMAT_SUPPORT_IA_INDEX_BUFFER;
-			const unsigned sampler_view =
+			unsigned sampler_view =
 				D3D11_FORMAT_SUPPORT_SHADER_LOAD |
 				D3D11_FORMAT_SUPPORT_SHADER_SAMPLE |
 				D3D11_FORMAT_SUPPORT_MIP |
