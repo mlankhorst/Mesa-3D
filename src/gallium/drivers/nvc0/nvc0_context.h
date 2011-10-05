@@ -58,7 +58,8 @@
 #define NVC0_BUFCTX_VERTEX   2
 #define NVC0_BUFCTX_TEXTURES 3
 #define NVC0_BUFCTX_IMAGES   4
-#define NVC0_BUFCTX_COUNT    5
+#define NVC0_BUFCTX_TFB      5
+#define NVC0_BUFCTX_COUNT    6
 
 struct nvc0_context {
    struct nouveau_context base;
@@ -76,6 +77,7 @@ struct nvc0_context {
       int32_t index_bias;
       boolean prim_restart;
       boolean early_z;
+      boolean rasterizer_discard;
       uint8_t num_vtxbufs;
       uint8_t num_vtxelts;
       uint8_t num_textures[5];
@@ -176,6 +178,9 @@ void nvc0_program_library_upload(struct nvc0_context *);
 
 /* nvc0_query.c */
 void nvc0_init_query_functions(struct nvc0_context *);
+void nvc0_query_pushbuf_submit(struct nvc0_context *, struct pipe_query *);
+
+#define NVC0_QUERY_TFB_BYTES (PIPE_QUERY_TYPES + 0)
 
 /* nvc0_shader_state.c */
 void nvc0_vertprog_validate(struct nvc0_context *);
@@ -225,6 +230,7 @@ nvc0_m2mf_copy_linear(struct nouveau_context *nv,
 
 /* nvc0_vbo.c */
 void nvc0_draw_vbo(struct pipe_context *, const struct pipe_draw_info *);
+void nvc0_draw_stream_output(struct pipe_context *, unsigned mode);
 
 void *
 nvc0_vertex_state_create(struct pipe_context *pipe,

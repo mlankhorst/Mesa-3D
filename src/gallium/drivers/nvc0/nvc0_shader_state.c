@@ -213,28 +213,38 @@ nvc0_tfb_validate(struct nvc0_context *nvc0)
    struct nouveau_channel *chan = nvc0->screen->base.channel;
    struct nvc0_program *vp;
    struct nvc0_transform_feedback_state *tfb = nvc0->tfb;
-   int b;
+   int b, n;
 
    BEGIN_RING(chan, RING_3D(TFB_ENABLE), 1);
-   if (!tfb) {
+   if (!tfb || nvc0->num_tfbbufs == 0) {
       OUT_RING(chan, 0);
       return;
    }
    OUT_RING(chan, 1);
 
-   vp = nvc0->vertprog ? nvc0->vertprog : nvc0->gmtyprog;
+   if (nvc0->dirty & NVC0_NEW_TFB_BUFFERS)
+      nvc0_bufctx_reset(nvc0, NVC0_BUFCTX_TFB);
 
-   for (b = 0; b < nvc0->num_tfbbufs; ++b) {
+   vp = nvc0->gmtyprog ? nvc0->gmtyprog : nvc0->vertprog;
+
+   for (n = 0, b = 0; b < nvc0->num_tfbbufs; ++b) {
       uint8_t idx, var[128];
-      int i, n;
+      int i;
       struct nv04_resource *buf = nv04_resource(nvc0->tfbbuf[b]);
 
-      BEGIN_RING(chan, RING_3D(TFB_BUFFER_ENABLE(b)), 5);
-      OUT_RING  (chan, 1);
-      OUT_RESRCh(chan, buf, nvc0->tfb_offset[b], NOUVEAU_BO_WR);
-      OUT_RESRCl(chan, buf, nvc0->tfb_offset[b], NOUVEAU_BO_WR);
-      OUT_RING  (chan, buf->base.width0 - nvc0->tfb_offset[b]);
-      OUT_RING  (chan, 0); /* TFB_PRIMITIVE_ID <- offset ? */
+      if (nvc0->dirty & NVC0_NEW_TFB_BUFFERS) {
+         /* Thankfully, it seems like if we don't do this, the buffer state
+	  * is kept, even if TFB was disabled in between.
+	  */
+         BEGIN_RING(chan, RING_3D(TFB_BUFFER_ENABLE(b)), 5);
+         OUT_RING  (chan, 1);
+         OUT_RESRCh(chan, buf, nvc0->tfb_offset[b], NOUVEAU_BO_WR);
+         OUT_RESRCl(chan, buf, nvc0->tfb_offset[b], NOUVEAU_BO_WR);
+         OUT_RING  (chan, buf->base.width0 - nvc0->tfb_offset[b]);
+         OUT_RING  (chan, 0); /* TFB_PRIMITIVE_ID <- offset ? */
+
+	 nvc0_bufctx_add_resident(nvc0, NVC0_BUFCTX_TFB, buf, NOUVEAU_BO_WR);
+      }
 
       if (!(nvc0->dirty & NVC0_NEW_TFB))
          continue;
@@ -244,13 +254,14 @@ nvc0_tfb_validate(struct nvc0_context *nvc0)
       OUT_RING  (chan, tfb->varying_count[b]);
       OUT_RING  (chan, tfb->stride[b]);
 
-      n = b ? tfb->varying_count[b - 1] : 0;
       i = 0;
       for (; i < tfb->varying_count[b]; ++i) {
          idx = tfb->varying_index[n + i];
          var[i] = vp->vp.out_pos[idx >> 2] + (idx & 3);
       }
-      for (; i & 3; ++i)
+      n += tfb->varying_count[b];
+
+      for (; i & 3; ++i) /* zero rest of method word bits */
          var[i] = 0;
 
       BEGIN_RING(chan, RING_3D(TFB_VARYING_LOCS(b, 0)), i / 4);

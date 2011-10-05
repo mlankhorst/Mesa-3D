@@ -251,6 +251,7 @@ nvc0_vtgp_gen_header(struct nvc0_program *vp, struct nv50_ir_prog_info *info)
          if (info->out[i].oread)
             nvc0_vtgp_hdr_update_oread(vp, info->out[i].slot[c]);
       }
+      vp->vp.out_pos[i] = info->out[i].slot[0];
    }
 
    for (i = 0; i < info->numSysVals; ++i) {

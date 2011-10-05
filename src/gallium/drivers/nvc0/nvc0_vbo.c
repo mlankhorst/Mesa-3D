@@ -645,3 +645,26 @@ nvc0_draw_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info)
 
    nvc0_release_user_vbufs(nvc0);
 }
+
+void
+nvc0_draw_stream_output(struct pipe_context *pipe, unsigned mode)
+{
+   struct nvc0_context *nvc0 = nvc0_context(pipe);
+   struct nouveau_channel *chan = nvc0->screen->base.channel;
+
+   if (!nvc0->tfb->q)
+      nvc0->tfb->q = pipe->create_query(pipe, NVC0_QUERY_TFB_BYTES);
+
+   pipe->end_query(pipe, nvc0->tfb->q);
+
+   nvc0_state_validate(nvc0, ~0, 8);
+
+   IMMED_RING(chan, RING_3D(VERTEX_BEGIN_GL), nvc0_prim_gl(mode));
+   BEGIN_RING(chan, RING_3D(DRAW_TFB_BASE), 1);
+   OUT_RING  (chan, 0);
+   BEGIN_RING(chan, RING_3D(DRAW_TFB_STRIDE), 1);
+   OUT_RING  (chan, nvc0->tfb->stride[0]);
+   BEGIN_RING(chan, RING_3D(DRAW_TFB_BYTES), 1);
+   nvc0_query_pushbuf_submit(nvc0, nvc0->tfb->q);
+   IMMED_RING(chan, RING_3D(VERTEX_END_GL), 0);
+}

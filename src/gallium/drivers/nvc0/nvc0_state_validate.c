@@ -345,11 +345,6 @@ nvc0_validate_clip(struct nvc0_context *nvc0)
       BEGIN_RING_1I(chan, RING_3D(CB_POS), nvc0->clip.nr * 4 + 1);
       OUT_RING  (chan, 0);
       OUT_RINGp (chan, &nvc0->clip.ucp[0][0], nvc0->clip.nr * 4);
-
-      BEGIN_RING(chan, RING_3D(VP_CLIP_DISTANCE_ENABLE), 1);
-      OUT_RING  (chan, (1 << nvc0->clip.nr) - 1);
-   } else {
-      IMMED_RING(chan, RING_3D(VP_CLIP_DISTANCE_ENABLE), 0);
    }
 }
 
@@ -499,12 +494,21 @@ nvc0_validate_derived_1(struct nvc0_context *nvc0)
 {
    struct nouveau_channel *chan = nvc0->screen->base.channel;
    boolean early_z;
+   boolean rasterizer_discard;
 
    early_z = nvc0->fragprog->fp.early_z && !nvc0->zsa->pipe.alpha.enabled;
 
    if (early_z != nvc0->state.early_z) {
       nvc0->state.early_z = early_z;
       IMMED_RING(chan, RING_3D(EARLY_FRAGMENT_TESTS), early_z);
+   }
+
+   rasterizer_discard = (!nvc0->fragprog || !nvc0->fragprog->hdr[18]) &&
+      !nvc0->zsa->pipe.depth.enabled && !nvc0->zsa->pipe.stencil[0].enabled;
+
+   if (rasterizer_discard != nvc0->state.rasterizer_discard) {
+      nvc0->state.rasterizer_discard = rasterizer_discard;
+      IMMED_RING(chan, RING_3D(RASTERIZE_ENABLE), !rasterizer_discard);
    }
 }
 

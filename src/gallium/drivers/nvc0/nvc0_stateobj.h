@@ -52,6 +52,7 @@ struct nvc0_vertex_stateobj {
 
 /* will have to lookup index -> location qualifier from nvc0_program */
 struct nvc0_transform_feedback_state {
+   struct pipe_query *q;
    uint32_t stride[4];
    uint8_t varying_count[4];
    uint8_t varying_index[0];

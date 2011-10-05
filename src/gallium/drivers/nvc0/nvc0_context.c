@@ -132,6 +132,7 @@ nvc0_create(struct pipe_screen *pscreen, void *priv)
    pipe->destroy = nvc0_destroy;
 
    pipe->draw_vbo = nvc0_draw_vbo;
+   pipe->draw_stream_output = nvc0_draw_stream_output;
    pipe->clear = nvc0_clear;
 
    pipe->flush = nvc0_flush;

@@ -871,7 +871,11 @@ nvc0_tfb_state_create(struct pipe_context *pipe,
    if (!so)
       return NULL;
 
+   so->q = NULL;
+
    for (b = 0; b < 4; ++b) {
+      so->varying_count[b] = 0;
+
       for (i = 0; i < pso->num_outputs; ++i) {
          if (pso->output_buffer[i] != b)
             continue;
@@ -893,6 +897,10 @@ nvc0_tfb_state_create(struct pipe_context *pipe,
 static void
 nvc0_tfb_state_delete(struct pipe_context *pipe, void *hwcso)
 {
+   struct nvc0_transform_feedback_state *so = hwcso;
+   if (so->q)
+      pipe->destroy_query(pipe, so->q);
+
    FREE(hwcso);
 }
 
@@ -915,7 +923,10 @@ nvc0_set_transform_feedback_buffers(struct pipe_context *pipe,
    assert(num_buffers >= 0 && num_buffers <= 4); /* why signed ? */
 
    for (i = 0; i < num_buffers; ++i) {
-       assert(offsets[i] >= 0);
+       if (offsets[i] < 0) {
+          nvc0->tfb_offset[i] = 0;
+          NOUVEAU_ERR("resuming TFB on changed buffers not implemented !\n");
+       }
        nvc0->tfb_offset[i] = offsets[i];
        pipe_resource_reference(&nvc0->tfbbuf[i], buffers[i]);
    }
