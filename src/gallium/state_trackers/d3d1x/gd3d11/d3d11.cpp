@@ -169,6 +169,11 @@ struct GalliumD3D11Screen : public GalliumD3D11ScreenBase
 	{
 	}
 
+	~GalliumD3D11Screen()
+	{
+		screen->destroy(screen);
+	}
+
 #if API < 11
 	// we use a D3D11-like API internally
 	virtual HRESULT STDMETHODCALLTYPE Map(
@@ -222,6 +227,8 @@ struct GalliumD3D11Screen : public GalliumD3D11ScreenBase
 #include "d3d11_context.h"
 #include "d3d11_misc.h"
 
+#include <stdio.h>
+
 #if API >= 11
 HRESULT STDMETHODCALLTYPE GalliumD3D11DeviceCreate(struct pipe_screen* screen, struct pipe_context* context, BOOL owns_context, unsigned creation_flags, IDXGIAdapter* adapter, ID3D11Device** ppDevice)
 {
@@ -229,6 +236,8 @@ HRESULT STDMETHODCALLTYPE GalliumD3D11DeviceCreate(struct pipe_screen* screen, s
 		*ppDevice = new GalliumD3D11ScreenImpl<false>(screen, context, owns_context, creation_flags, adapter);
 	else
 		*ppDevice = new GalliumD3D11ScreenImpl<true>(screen, context, owns_context, creation_flags, adapter);
+
+   fprintf(stderr, "created D3D11 device %p: screen %p, context %p, adapter %p\n", *ppDevice, screen, context, adapter);
 	return S_OK;
 }
 #else
