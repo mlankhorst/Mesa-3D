@@ -68,6 +68,8 @@ private:
    bool phaseInstanceUsed;
    int phaseEnded; // (phase + 1) if $phase ended
 
+   bool finalized;
+
    Value *srcPtr[3][3]; // for indirect addressing, save pointer values
    Value *dstPtr[3];
    Value *vtxBase[3]; // base address of vertex in a primitive (TP/GP)
@@ -80,6 +82,9 @@ private:
    Stack joinBBs;
    Stack loopBBs;
    Stack breakBBs;
+   Stack entryBBs;
+   Stack leaveBBs;
+   Stack retIPs;
 
    bool shadow[NV50_IR_MAX_RESOURCES];
    TexTarget resourceType[NV50_IR_MAX_RESOURCES][2];
@@ -103,7 +108,7 @@ private:
    void allocateValues();
    void exportOutputs();
 
-   void emitTex(Value *dst0[4], TexInstruction *, uint8_t swizzle[4]);
+   void emitTex(Value *dst0[4], TexInstruction *, const uint8_t swizzle[4]);
    void handleLOAD(Value *dst0[4]);
    void handleSAMPLE(operation, Value *dst0[4]);
    void handleQUERY(Value *dst0[4], enum TexQuery query);
@@ -128,6 +133,7 @@ private:
 
    bool checkDstSrcAliasing() const;
    void insertConvergenceOps(BasicBlock *conv, BasicBlock *fork);
+   void finalizeShader();
 
    operation cvtOpcode(enum sm4_opcode op) const;
    unsigned int getDstOpndCount(enum sm4_opcode opcode) const;
@@ -686,6 +692,9 @@ Converter::parseSignature()
       r = sm4.params_in[i].Register;
 
       info.in[r].mask |= sm4.params_in[i].ReadWriteMask;
+      // mask might be uninitialized ...
+      if (!sm4.params_in[i].ReadWriteMask)
+	  info.in[r].mask = 0xf;
       info.in[r].id = r;
       if (info.in[r].regular) // already assigned semantic name/index
          continue;
@@ -754,8 +763,6 @@ Converter::parseSignature()
          info.io.fragDepth = r;
          break;
       case D3D_NAME_CULL_DISTANCE:
-         info.io.cullDistanceMask |= 1 << sm4.params_out[i].SemanticIndex;
-         // fall through
       case D3D_NAME_CLIP_DISTANCE:
          info.out[r].sn = TGSI_SEMANTIC_CLIPDISTANCE;
          info.out[r].si = sm4.params_out[i].SemanticIndex;
@@ -890,6 +897,12 @@ Converter::inspectDeclaration(const sm4_dcl& dcl)
       switch (dcl.sv) {
       case SM4_SV_POSITION:
          assert(prog->getType() != Program::TYPE_FRAGMENT);
+         break;
+      case SM4_SV_CULL_DISTANCE: // XXX: order ?
+         info.io.cullDistanceMask |= 1 << info.io.clipDistanceCount;
+	 // fall through
+      case SM4_SV_CLIP_DISTANCE:
+         info.io.clipDistanceCount++;
          break;
       default:
          break;
@@ -1458,25 +1471,52 @@ Converter::saveDst(const sm4_op &op, int c, Value *value, int s)
 }
 
 void
-Converter::emitTex(Value *dst0[4], TexInstruction *tex, uint8_t swizzle[4])
+Converter::emitTex(Value *dst0[4], TexInstruction *tex, const uint8_t swz[4])
 {
    Value *res[4] = { NULL, NULL, NULL, NULL };
    unsigned int c, d;
 
    for (c = 0; c < 4; ++c)
       if (dst0[c])
-         tex->tex.mask |= 1 << swizzle[c];
+         tex->tex.mask |= 1 << swz[c];
    for (d = 0, c = 0; c < 4; ++c)
       if (tex->tex.mask & (1 << c))
          tex->setDef(d++, (res[c] = getScratch()));
 
    bb->insertTail(tex);
 
-   for (c = 0; c < 4; ++c) {
-      if (dst0[c]) {
-         assert(res[swizzle[c]]);
-         mkMov(dst0[c], res[swizzle[c]]);
+   if (insn->opcode == SM4_OPCODE_RESINFO) {
+      if (tex->tex.target.getDim() == 1) {
+	 res[2] = loadImm(NULL, 0);
+         if (!tex->tex.target.isArray())
+            res[1] = res[2];
+      } else
+      if (tex->tex.target.getDim() == 2 && !tex->tex.target.isArray()) {
+         res[2] = loadImm(NULL, 0);
       }
+      for (c = 0; c < 4; ++c) {
+         if (!dst0[c])
+            continue;
+         Value *src = res[swz[c]];
+         assert(src);
+         switch (insn->insn.resinfo_return_type) {
+         case 0:
+            mkCvt(OP_CVT, TYPE_F32, dst0[c], TYPE_U32, src);
+            break;
+         case 1:
+            mkCvt(OP_CVT, TYPE_F32, dst0[c], TYPE_U32, src);
+            if (swz[c] < tex->tex.target.getDim())
+               mkOp1(OP_RCP, TYPE_F32, dst0[c], dst0[c]);
+            break;
+         default:
+            mkMov(dst0[c], src);
+            break;
+         }
+      }
+   } else {
+      for (c = 0; c < 4; ++c)
+         if (dst0[c])
+            mkMov(dst0[c], res[swz[c]]);
    }
 }
 
@@ -1612,6 +1652,25 @@ Converter::insertConvergenceOps(BasicBlock *conv, BasicBlock *fork)
    fork->insertBefore(fork->getExit(), fork->joinAt);
 }
 
+void
+Converter::finalizeShader()
+{
+   if (finalized)
+      return;
+   BasicBlock *epilogue = reinterpret_cast<BasicBlock *>(leaveBBs.pop().u.p);
+   entryBBs.pop();
+
+   finalized = true;
+
+   bb->cfg.attach(&epilogue->cfg, Graph::Edge::TREE);
+   setPosition(epilogue, true);
+
+   if (prog->getType() == Program::TYPE_FRAGMENT)
+      exportOutputs();
+
+   mkOp(OP_EXIT, TYPE_NONE, NULL)->terminator = 1;
+}
+
 #define FOR_EACH_DST0_ENABLED_CHANNEL32(chan)         \
    for ((chan) = 0; (chan) < 4; ++(chan))             \
       if (insn->ops[0].get()->mask & (1 << (chan)))
@@ -1660,7 +1719,7 @@ Converter::handleInstruction(unsigned int pos)
 
    bool useScratchDst = checkDstSrcAliasing();
 
-   // INFO("SM4_OPCODE_##%u, aliasing = %u\n", insn->opcode, useScratchDst);
+   INFO("SM4_OPCODE_##%u, aliasing = %u\n", insn->opcode, useScratchDst);
 
    if (nDstOpnds >= 1) {
       for (c = 0; c < nc; ++c)
@@ -1874,11 +1933,9 @@ Converter::handleInstruction(unsigned int pos)
       break;
 
    case SM4_OPCODE_RET:
-      if (prog->getType() == Program::TYPE_FRAGMENT)
-         exportOutputs();
       // XXX: the following doesn't work with subroutines / early ret
       if (!haveNextPhase(pos))
-         mkOp(OP_EXIT, TYPE_NONE, NULL)->terminator = 1;
+         finalizeShader();
       else
          phaseEnded = phase + 1;
       break;
@@ -2171,10 +2228,16 @@ Converter::run()
 
    info.assignSlots(&info);
 
-   assert(prog);
-   prog->main->setEntry(new BasicBlock(prog->main));
+   BasicBlock *entry = new BasicBlock(prog->main);
+   BasicBlock *leave = new BasicBlock(prog->main);
 
-   setPosition(BasicBlock::get(prog->main->cfg.getRoot()), true);
+   prog->main->setEntry(entry);
+   prog->main->setExit(leave);
+
+   setPosition(entry, true);
+
+   entryBBs.push(entry);
+   leaveBBs.push(leave);
 
    if (prog->getType() == Program::TYPE_FRAGMENT) {
       Symbol *sv = mkSysVal(SV_POSITION, 3);
@@ -2191,6 +2254,7 @@ Converter::run()
          domainPt[2] = loadImm(NULL, 0.0f);
    }
 
+   finalized = false;
    phaseEnded = 0;
    phase = 0;
    subPhase = 0;
@@ -2209,6 +2273,7 @@ Converter::run()
       else
          ++subPhase;
    }
+   finalizeShader();
 
    return true;
 }
