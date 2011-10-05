@@ -642,24 +642,44 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 			}
 		}
 
-		unsigned num_params_to_use = std::min(num_params, (unsigned)D3D11_IA_VERTEX_INPUT_STRUCTURE_ELEMENT_COUNT);
-		for(unsigned i = 0; i < num_params_to_use; ++i)
-		{
-			int idx = -1;
-			semantic_to_idx_map_t::iterator iter = semantic_to_idx_map.find(std::make_pair(c_string(params[i].SemanticName), params[i].SemanticIndex));
-			if(iter != semantic_to_idx_map.end())
-				idx = iter->second;
+		// TODO: check for errors (e.g. ambiguous layouts, unmatched semantics)
 
-			// TODO: I kind of doubt Gallium drivers will like null elements; should we do something about it, either here, in the interface, or in the drivers?
-			// TODO: also, in which cases should we return errors? (i.e. duplicate semantics in vs, duplicate semantics in layout, unmatched semantic in vs, unmatched semantic in layout)
-			memset(&elements[i], 0, sizeof(elements[i]));
-			if(idx >= 0)
+		unsigned num_params_to_use = 0;
+		num_params = std::min(num_params, (unsigned)D3D11_IA_VERTEX_INPUT_STRUCTURE_ELEMENT_COUNT);
+		for(unsigned i = 0; i < num_params; ++i)
+		{
+			if (!strcasecmp(params[i].SemanticName, "SV_INSTANCEID") ||
+			    !strcasecmp(params[i].SemanticName, "SV_VERTEXID"))
+				continue;
+			const unsigned n = num_params_to_use++;
+
+			semantic_to_idx_map_t::iterator iter = semantic_to_idx_map.find(std::make_pair(c_string(params[i].SemanticName), params[i].SemanticIndex));
+
+			if(iter != semantic_to_idx_map.end())
 			{
-				elements[i].src_format = formats[idx];
-				elements[i].src_offset = offsets[idx];
-				elements[i].vertex_buffer_index = input_element_descs[idx].InputSlot;
-				elements[i].instance_divisor = input_element_descs[idx].InstanceDataStepRate;
+				unsigned idx = iter->second;
+
+				elements[n].src_format = formats[idx];
+				elements[n].src_offset = offsets[idx];
+				elements[n].vertex_buffer_index = input_element_descs[idx].InputSlot;
+				elements[n].instance_divisor = input_element_descs[idx].InstanceDataStepRate;
+				if (input_element_descs[idx].InputSlotClass == D3D11_INPUT_PER_INSTANCE_DATA)
+					if (elements[n].instance_divisor == 0)
+						elements[n].instance_divisor = 1;
+
+				fprintf(stderr, "element[%i]: index = %i, format = %s, vbi %u, offset %u\n",
+					n, idx, util_format_name(elements[n].src_format),
+					elements[n].vertex_buffer_index, elements[n].src_offset);
 			}
+			else
+			{
+				// XXX: undefined input, is this allowed or should we return an error ?
+				elements[n].src_format = PIPE_FORMAT_NONE;
+				elements[n].src_offset = 0;
+				elements[n].vertex_buffer_index = 0;
+				elements[n].instance_divisor = 0;
+			}
+
 		}
 
 		free(params);
