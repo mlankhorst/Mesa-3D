@@ -1,6 +1,7 @@
 
 #include "pipe/p_context.h"
 #include "util/u_inlines.h"
+#include "util/u_format.h"
 
 #include "nouveau/nouveau_screen.h"
 
@@ -45,6 +46,10 @@ nv50_surface_from_buffer(struct pipe_context *pipe,
    sf->base.usage = templ->usage;
    sf->base.u.buf.first_element = templ->u.buf.first_element;
    sf->base.u.buf.last_element = templ->u.buf.last_element;
+
+   sf->offset =
+      templ->u.buf.first_element * util_format_get_blocksize(sf->base.format);
+   sf->offset &= ~0x7f;
 
    sf->width = templ->u.buf.last_element - templ->u.buf.first_element + 1;
    sf->height = 1;
