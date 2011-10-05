@@ -310,8 +310,7 @@ nv50_render_condition(struct pipe_context *pipe,
    }
    q = nv50_query(pq);
 
-   if (mode == PIPE_RENDER_COND_WAIT ||
-       mode == PIPE_RENDER_COND_BY_REGION_WAIT) {
+   if (!(mode & PIPE_RENDER_COND_NO_WAIT)) {
       BEGIN_RING(chan, RING_3D_(NV50_GRAPH_WAIT_FOR_IDLE), 1);
       OUT_RING  (chan, 0);
    }
