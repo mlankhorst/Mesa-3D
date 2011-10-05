@@ -369,15 +369,14 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 	template<typename T, typename U>
 	bool convert_blend_state(T& to, const U& from, unsigned BlendEnable, unsigned RenderTargetWriteMask)
 	{
-		if(invalid(0
-			|| from.SrcBlend >= D3D11_BLEND_COUNT
+		if(unlikely(from.SrcBlend >= D3D11_BLEND_COUNT
 			|| from.SrcBlendAlpha >= D3D11_BLEND_COUNT
 			|| from.DestBlend >= D3D11_BLEND_COUNT
 			|| from.DestBlendAlpha >= D3D11_BLEND_COUNT
 			|| from.BlendOp >= 6
+			|| from.BlendOp == 0
 			|| from.BlendOpAlpha >= 6
-			|| !from.BlendOp
-			|| !from.BlendOpAlpha
+			|| from.BlendOpAlpha == 0
 		))
 			return false;
 
