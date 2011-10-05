@@ -1712,7 +1712,7 @@ void r600_query_end(struct r600_context *ctx, struct r600_query *query)
 }
 
 void r600_query_predication(struct r600_context *ctx, struct r600_query *query, int operation,
-			    int flag_wait)
+			    int flags)
 {
 	if (operation == PREDICATION_OP_CLEAR) {
 		if (ctx->pm4_cdwords + 3 > ctx->pm4_ndwords)
@@ -1734,8 +1734,11 @@ void r600_query_predication(struct r600_context *ctx, struct r600_query *query, 
 		if (ctx->pm4_cdwords + 5 * count > ctx->pm4_ndwords)
 			r600_context_flush(ctx, RADEON_FLUSH_ASYNC);
 
-		op = PRED_OP(operation) | PREDICATION_DRAW_VISIBLE |
-				(flag_wait ? PREDICATION_HINT_WAIT : PREDICATION_HINT_NOWAIT_DRAW);
+		op = PRED_OP(operation) |
+			((flags & PIPE_RENDER_COND_NEGATE) ?
+			 PREDICATION_DRAW_NOT_VISIBLE : PREDICATION_DRAW_VISIBLE) |
+			((flags & PIPE_RENDER_COND_NO_WAIT) ?
+			 PREDICATION_HINT_NOWAIT_DRAW : PREDICATION_HINT_WAIT);
 
 		/* emit predicate packets for all data blocks */
 		while (results_base != query->results_end) {

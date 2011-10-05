@@ -60,20 +60,20 @@ st_BeginConditionalRender(struct gl_context *ctx, struct gl_query_object *q,
 
    switch (mode) {
    case GL_QUERY_WAIT:
-      m = PIPE_RENDER_COND_WAIT;
+      m = 0;
       break;
    case GL_QUERY_NO_WAIT:
       m = PIPE_RENDER_COND_NO_WAIT;
       break;
    case GL_QUERY_BY_REGION_WAIT:
-      m = PIPE_RENDER_COND_BY_REGION_WAIT;
+      m = PIPE_RENDER_COND_BY_REGION;
       break;
    case GL_QUERY_BY_REGION_NO_WAIT:
-      m = PIPE_RENDER_COND_BY_REGION_NO_WAIT;
+      m = PIPE_RENDER_COND_BY_REGION | PIPE_RENDER_COND_NO_WAIT;
       break;
    default:
       assert(0 && "bad mode in st_BeginConditionalRender");
-      m = PIPE_RENDER_COND_WAIT;
+      m = 0;
    }
 
    st->render_condition = stq->pq;
