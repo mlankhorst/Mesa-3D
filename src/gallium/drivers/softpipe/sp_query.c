@@ -184,12 +184,12 @@ softpipe_check_render_cond(struct softpipe_context *sp)
       return TRUE;  /* no query predicate, draw normally */
    }
 
-   wait = (sp->render_cond_mode == PIPE_RENDER_COND_WAIT ||
-           sp->render_cond_mode == PIPE_RENDER_COND_BY_REGION_WAIT);
+   wait = !(sp->render_cond_mode & PIPE_RENDER_COND_NO_WAIT);
 
    b = pipe->get_query_result(pipe, sp->render_cond_query, wait, &result);
    if (b)
-      return result > 0;
+      return (sp->render_cond_mode & PIPE_RENDER_COND_NEGATED) ?
+         (result == 0) : (result > 0);
    else
       return TRUE;
 }
