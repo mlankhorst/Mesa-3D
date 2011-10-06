@@ -1752,18 +1752,26 @@ Converter::handleInstruction(unsigned int pos)
    case SM4_OPCODE_IADD:
    case SM4_OPCODE_IMAX:
    case SM4_OPCODE_IMIN:
-   case SM4_OPCODE_ISHL:
-   case SM4_OPCODE_ISHR:
    case SM4_OPCODE_MIN:
    case SM4_OPCODE_MAX:
    case SM4_OPCODE_MUL:
    case SM4_OPCODE_OR:
    case SM4_OPCODE_UMAX:
    case SM4_OPCODE_UMIN:
-   case SM4_OPCODE_USHR:
    case SM4_OPCODE_XOR:
       FOR_EACH_DST0_ENABLED_CHANNEL32(c) {
-         mkOp2(op, dTy, dst0[c], src(0, c), src(1, c));
+         Instruction *insn = mkOp2(op, dTy, dst0[c], src(0, c), src(1, c));
+         if (dTy == TYPE_F32)
+            insn->ftz = 1;
+      }
+      break;
+
+   case SM4_OPCODE_ISHL:
+   case SM4_OPCODE_ISHR:
+   case SM4_OPCODE_USHR:
+      FOR_EACH_DST0_ENABLED_CHANNEL32(c) {
+         Instruction *insn = mkOp2(op, dTy, dst0[c], src(0, c), src(1, c));
+         insn->subOp = NV50_IR_SUBOP_SHIFT_WRAP;
       }
       break;
 
@@ -1812,6 +1820,7 @@ Converter::handleInstruction(unsigned int pos)
          if (dst1[c])
             mkOp2(OP_MUL, dTy, dst1[c], a, b);
       }
+      break;
 
    case SM4_OPCODE_DP2:
       handleDP(dst0, 2);
@@ -1842,6 +1851,15 @@ Converter::handleInstruction(unsigned int pos)
       }
       break;
 
+   case SM4_OPCODE_FRC:
+      FOR_EACH_DST0_ENABLED_CHANNEL32(c) {
+         Value *val = getScratch();
+         Value *src0 = src(0, c);
+         mkOp1(OP_FLOOR, TYPE_F32, val, src0);
+         mkOp2(OP_SUB, TYPE_F32, dst0[c], src0, val);
+      }
+      break;
+
    case SM4_OPCODE_MOVC:
       FOR_EACH_DST0_ENABLED_CHANNEL32(c)
          mkCmp(OP_SLCT, CC_NE, TYPE_U32, dst0[c], src(1, c), src(2, c),
@@ -1853,7 +1871,9 @@ Converter::handleInstruction(unsigned int pos)
    case SM4_OPCODE_ROUND_PI:
    case SM4_OPCODE_ROUND_Z:
       FOR_EACH_DST0_ENABLED_CHANNEL32(c) {
-         mkOp1(op, dTy, dst0[c], src(0, c))->rnd = cvtRoundingMode(opcode);
+         Instruction *rnd = mkOp1(op, dTy, dst0[c], src(0, c));
+         rnd->ftz = 1;
+         rnd->rnd = cvtRoundingMode(opcode);
       }
       break;
 
@@ -1882,6 +1902,7 @@ Converter::handleInstruction(unsigned int pos)
    case SM4_OPCODE_ILT:
    case SM4_OPCODE_LT:
    case SM4_OPCODE_NE:
+   case SM4_OPCODE_INE:
    case SM4_OPCODE_ULT:
    case SM4_OPCODE_UGE:
    case SM4_OPCODE_DEQ:
@@ -1891,8 +1912,11 @@ Converter::handleInstruction(unsigned int pos)
    {
       CondCode cc = cvtCondCode(opcode);
       FOR_EACH_DST0_ENABLED_CHANNEL32(c) {
-         mkCmp(op, cc, sTy, dst0[c], src(0, c), src(1, c), NULL)->setType(
-            dTy, sTy);
+         CmpInstruction *set;
+         set = mkCmp(op, cc, sTy, dst0[c], src(0, c), src(1, c), NULL);
+         set->setType(dTy, sTy);
+         if (sTy == TYPE_F32)
+            set->ftz = 1;
       }
    }
       break;
@@ -2070,7 +2094,6 @@ Converter::handleInstruction(unsigned int pos)
       bb->cfg.attach(&contBB->cfg, Graph::Edge::BACK);
       bb->cfg.attach(&nextBB->cfg, Graph::Edge::FORWARD);
    }
-      assert(!"CONTINUEC not implemented");
       break;
 
    case SM4_OPCODE_SAMPLE:
