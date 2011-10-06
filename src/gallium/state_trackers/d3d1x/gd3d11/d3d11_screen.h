@@ -772,9 +772,8 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 			if(target != PIPE_TEXTURE_2D)
 				return E_INVALIDARG;
 			target = PIPE_TEXTURE_CUBE;
-
-			if(array_size != 6)
-				return E_NOTIMPL;
+			if(array_size % 6)
+				return E_INVALIDARG;
 		}
 		else if (array_size > 1)
 		{
@@ -1074,7 +1073,15 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 				def_desc.Texture3D.MipLevels = resource->last_level + 1;
 				break;
 			case PIPE_TEXTURE_CUBE:
-				def_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBE;
+				if (resource->array_size > 6)
+				{
+					def_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBEARRAY;
+					def_desc.TextureCubeArray.NumCubes = resource->array_size / 6;
+				}
+				else
+				{
+					def_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBE;
+				}
 				def_desc.TextureCube.MipLevels = resource->last_level + 1;
 				break;
 			default:
@@ -1100,12 +1107,18 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 		{
 		case D3D11_SRV_DIMENSION_TEXTURE1DARRAY:
 		case D3D11_SRV_DIMENSION_TEXTURE2DARRAY:
+		case D3D11_SRV_DIMENSION_TEXTURECUBEARRAY:
 			templat.u.tex.first_layer = desc->Texture1DArray.FirstArraySlice;
 			templat.u.tex.last_layer = templat.u.tex.first_layer + desc->Texture1DArray.ArraySize - 1;
+			if (desc->ViewDimension == D3D11_SRV_DIMENSION_TEXTURECUBEARRAY) {
+				templat.u.tex.first_layer *= 6;
+				templat.u.tex.last_layer *= 6;
+			}
 			// fall through
 		case D3D11_SRV_DIMENSION_TEXTURE1D:
 		case D3D11_SRV_DIMENSION_TEXTURE2D:
 		case D3D11_SRV_DIMENSION_TEXTURE3D:
+		case D3D11_SRV_DIMENSION_TEXTURECUBE:
 			// yes, this works for all of these types
 			templat.u.tex.first_level = desc->Texture1D.MostDetailedMip;
 			if (desc->Texture1D.MipLevels == (unsigned)-1)
