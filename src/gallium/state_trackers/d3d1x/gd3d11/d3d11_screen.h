@@ -389,26 +389,29 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 	template<typename T, typename U>
 	bool convert_blend_state(T& to, const U& from, unsigned BlendEnable, unsigned RenderTargetWriteMask)
 	{
-		if(unlikely(from.SrcBlend >= D3D11_BLEND_COUNT
-			|| from.SrcBlendAlpha >= D3D11_BLEND_COUNT
-			|| from.DestBlend >= D3D11_BLEND_COUNT
-			|| from.DestBlendAlpha >= D3D11_BLEND_COUNT
-			|| from.BlendOp >= 6
-			|| from.BlendOp == 0
-			|| from.BlendOpAlpha >= 6
-			|| from.BlendOpAlpha == 0
-		))
+		if(unlikely(BlendEnable &&
+			    (from.SrcBlend >= D3D11_BLEND_COUNT ||
+			     from.SrcBlendAlpha >= D3D11_BLEND_COUNT ||
+			     from.DestBlend >= D3D11_BLEND_COUNT ||
+			     from.DestBlendAlpha >= D3D11_BLEND_COUNT ||
+			     from.BlendOp >= 6 ||
+			     from.BlendOp == 0 ||
+			     from.BlendOpAlpha >= 6 ||
+			     from.BlendOpAlpha == 0)))
 			return false;
 
 		to.blend_enable = BlendEnable;
 
-		to.rgb_func = from.BlendOp - 1;
-		to.alpha_func = from.BlendOpAlpha - 1;
+		if(BlendEnable)
+		{
+			to.rgb_func = from.BlendOp - 1;
+			to.alpha_func = from.BlendOpAlpha - 1;
 
-		to.rgb_src_factor = d3d11_to_pipe_blend[from.SrcBlend];
-		to.alpha_src_factor = d3d11_to_pipe_blend[from.SrcBlendAlpha];
-		to.rgb_dst_factor = d3d11_to_pipe_blend[from.DestBlend];
-		to.alpha_dst_factor = d3d11_to_pipe_blend[from.DestBlendAlpha];
+			to.rgb_src_factor = d3d11_to_pipe_blend[from.SrcBlend];
+			to.alpha_src_factor = d3d11_to_pipe_blend[from.SrcBlendAlpha];
+			to.rgb_dst_factor = d3d11_to_pipe_blend[from.DestBlend];
+			to.alpha_dst_factor = d3d11_to_pipe_blend[from.DestBlendAlpha];
+		}
 
 		to.colormask = RenderTargetWriteMask & 0xf;
 		return true;
@@ -432,8 +435,10 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 		memset(&state, 0, sizeof(state));
 		state.alpha_to_coverage = !!blend_state_desc->AlphaToCoverageEnable;
 		state.independent_blend_enable = !!blend_state_desc->IndependentBlendEnable;
+
 		assert(PIPE_MAX_COLOR_BUFS >= 8);
-		for(unsigned i = 0; i < 8; ++i)
+		const unsigned n = blend_state_desc->IndependentBlendEnable ? 8 : 1;
+		for(unsigned i = 0; i < n; ++i)
 		{
 			 if(!convert_blend_state(
 					 state.rt[i],
