@@ -1620,6 +1620,12 @@ Converter::handleSAMPLE(operation opr, Value *dst0[4])
    if (dc)
       texi->setSrc(s++, dc);
 
+   for (c = 0; c < 3; ++c) {
+      texi->tex.offset[0][c] = insn->sample_offset[c];
+      if (texi->tex.offset[0][c])
+         texi->tex.useOffsets = 1;
+   }
+
    texi->setTexture(tgt, tR, tS);
 
    emitTex(dst0, texi, insn->ops[2]->swizzle);
@@ -1893,15 +1899,17 @@ Converter::handleInstruction(unsigned int pos)
 
    case SM4_OPCODE_FTOI:
    case SM4_OPCODE_FTOU:
+      FOR_EACH_DST0_ENABLED_CHANNEL32(c)
+         mkCvt(op, dTy, dst0[c], sTy, src(0, c))->rnd = ROUND_Z;
+      break;
    case SM4_OPCODE_ITOF:
    case SM4_OPCODE_UTOF:
    case SM4_OPCODE_F32TOF16:
    case SM4_OPCODE_F16TOF32:
    case SM4_OPCODE_DTOF:
    case SM4_OPCODE_FTOD:
-      FOR_EACH_DST0_ENABLED_CHANNEL32(c) {
+      FOR_EACH_DST0_ENABLED_CHANNEL32(c)
          mkCvt(op, dTy, dst0[c], sTy, src(0, c));
-      }
       break;
 
    case SM4_OPCODE_CUT:
