@@ -294,6 +294,14 @@ nvc0_vertex_arrays_validate(struct nvc0_context *nvc0)
       ve = &vertex->element[i];
       vb = &nvc0->vtxbuf[ve->pipe.vertex_buffer_index];
 
+      if (!vb->buffer) {
+         BEGIN_RING(chan, RING_3D(VERTEX_ATTRIB_FORMAT(i)), 1);
+         OUT_RING  (chan, NVC0_3D_VERTEX_ATTRIB_INACTIVE);
+         BEGIN_RING(chan, RING_3D(VERTEX_ARRAY_FETCH(i)), 1);
+         OUT_RING  (chan, 0);
+         continue;
+      }
+
       if (unlikely(ve->pipe.instance_divisor)) {
          if (!(nvc0->state.instance_elts & (1 << i))) {
             IMMED_RING(chan, RING_3D(VERTEX_ARRAY_PER_INSTANCE(i)), 1);
@@ -508,6 +516,28 @@ nvc0_draw_elements(struct nvc0_context *nvc0, boolean shorten,
       nvc0->state.index_bias = index_bias;
    }
 
+   if (!nvc0->idxbuf.buffer) {
+      /* d3d1x requires this to work, send count times index 0 */
+      BEGIN_RING(chan, RING_3D(VERTEX_BEGIN_GL), 1);
+      OUT_RING  (chan, prim);
+      BEGIN_RING(chan, RING_3D(INDEX_ARRAY_START_HIGH), 7);
+      OUT_RING  (chan, 0);
+      OUT_RING  (chan, 1);
+      OUT_RING  (chan, 0);
+      OUT_RING  (chan, 0);
+      OUT_RING  (chan, 0);
+      OUT_RING  (chan, 0);
+      OUT_RING  (chan, count);
+      IMMED_RING(chan, RING_3D(VERTEX_END_GL), 0);
+
+      while (--instance_count) {
+         BEGIN_RING(chan, RING_3D(VERTEX_BEGIN_GL), 1);
+         OUT_RING  (chan, prim | NVC0_3D_VERTEX_BEGIN_GL_INSTANCE_NEXT);
+         BEGIN_RING(chan, RING_3D(INDEX_BATCH_COUNT), 1);
+         OUT_RING  (chan, count);
+         IMMED_RING(chan, RING_3D(VERTEX_END_GL), 0);
+      }
+   } else
    if (nouveau_resource_mapped_by_gpu(nvc0->idxbuf.buffer)) {
       struct nv04_resource *res = nv04_resource(nvc0->idxbuf.buffer);
       unsigned offset = nvc0->idxbuf.offset;
@@ -515,23 +545,30 @@ nvc0_draw_elements(struct nvc0_context *nvc0, boolean shorten,
 
       nouveau_buffer_adjust_score(&nvc0->base, res, 1);
 
-      while (instance_count--) {
-         MARK_RING (chan, 11, 4);
+      BEGIN_RING(chan, RING_3D(VERTEX_BEGIN_GL), 1);
+      OUT_RING  (chan, prim);
+      BEGIN_RING(chan, RING_3D(INDEX_ARRAY_START_HIGH), 7);
+      OUT_RESRCh(chan, res, offset, NOUVEAU_BO_RD);
+      OUT_RESRCl(chan, res, offset, NOUVEAU_BO_RD);
+      OUT_RESRCh(chan, res, limit, NOUVEAU_BO_RD);
+      OUT_RING  (chan, 0);
+      OUT_RESRCl(chan, res, limit, NOUVEAU_BO_RD);
+      OUT_RING  (chan, index_size >> 1);
+      OUT_RING  (chan, start);
+      OUT_RING  (chan, count);
+      IMMED_RING(chan, RING_3D(VERTEX_END_GL), 0);
+
+      nvc0_resource_fence(res, NOUVEAU_BO_RD);
+
+      while (--instance_count) {
          BEGIN_RING(chan, RING_3D(VERTEX_BEGIN_GL), 1);
-         OUT_RING  (chan, mode);
-         BEGIN_RING(chan, RING_3D(INDEX_ARRAY_START_HIGH), 7);
-         OUT_RESRCh(chan, res, offset, NOUVEAU_BO_RD);
-         OUT_RESRCl(chan, res, offset, NOUVEAU_BO_RD);
-         OUT_RESRCh(chan, res, limit, NOUVEAU_BO_RD);
-         OUT_RESRCl(chan, res, limit, NOUVEAU_BO_RD);
-         OUT_RING  (chan, index_size >> 1);
+         OUT_RING  (chan, prim | NVC0_3D_VERTEX_BEGIN_GL_INSTANCE_NEXT);
+         BEGIN_RING(chan, RING_3D(INDEX_BATCH_FIRST), 2);
          OUT_RING  (chan, start);
          OUT_RING  (chan, count);
          IMMED_RING(chan, RING_3D(VERTEX_END_GL), 0);
 
          nvc0_resource_fence(res, NOUVEAU_BO_RD);
-
-         mode |= NVC0_3D_VERTEX_BEGIN_GL_INSTANCE_NEXT;
       }
    } else {
       data = nouveau_resource_map_offset(&nvc0->base,
@@ -619,8 +656,6 @@ nvc0_draw_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info)
                        info->instance_count);
    } else {
       boolean shorten = info->max_index <= 65535;
-
-      assert(nvc0->idxbuf.buffer);
 
       if (info->primitive_restart != nvc0->state.prim_restart) {
          if (info->primitive_restart) {
