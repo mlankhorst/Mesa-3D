@@ -519,6 +519,20 @@ NVC0LoweringPass::handleRDSV(Instruction *i)
       assert(prog->getType() == Program::TYPE_TESSELLATION_EVAL);
       readTessCoord(i->getDef(0)->asLValue(), i->getSrc(0)->reg.data.sv.index);
       break;
+   case SV_FACE:
+   {
+      Value *face = i->getDef(0);
+      ld = new_Instruction(func, OP_LINTERP, TYPE_U32);
+      ld->setDef(0, face);
+      ld->setSrc(0, bld.mkSymbol(FILE_SHADER_INPUT, 0, TYPE_U32, addr));
+      ld->setInterpolate(NV50_IR_INTERP_FLAT);
+      bld.getBB()->insertAfter(i, ld);
+      if (i->dType == TYPE_F32) {
+         bld.mkOp2(OP_AND, TYPE_U32, face, face, bld.mkImm(0x80000000));
+         bld.mkOp2(OP_XOR, TYPE_U32, face, face, bld.mkImm(0xbf800000));
+      }
+   }
+      break;
    default:
       if (prog->getType() == Program::TYPE_TESSELLATION_EVAL)
          vtx = bld.mkOp1v(OP_PFETCH, TYPE_U32, bld.getSSA(), bld.mkImm(0));
@@ -714,14 +728,6 @@ NVC0LoweringPass::visit(Instruction *i)
       if (i->getSrc(0)->reg.data.offset >= 0x280 &&
           i->getSrc(0)->reg.data.offset <  0x2c0)
          i->setInterpolate(i->getSampleMode() | NV50_IR_INTERP_SC);
-      break;
-   case OP_LINTERP:
-      if (i->getSrc(0)->reg.data.offset == 0x3fc) {
-         Value *face = i->getDef(0);
-         bld.setPosition(i, true);
-         bld.mkOp2(OP_SHL, TYPE_U32, face, face, bld.mkImm(31));
-         bld.mkOp2(OP_XOR, TYPE_U32, face, face, bld.mkImm(0xbf800000));
-      }
       break;
    default:
       break;
