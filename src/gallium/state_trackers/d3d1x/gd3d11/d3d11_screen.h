@@ -839,17 +839,16 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 			return E_FAIL;
 		if(initial_data)
 		{
-			const unsigned last_level = mip_levels ? templat.last_level : 0;
 			for(unsigned slice = 0; slice < array_size; ++slice)
 			{
-				for(unsigned level = 0; level <= last_level; ++level)
+				for(unsigned level = 0; level <= templat.last_level; ++level)
 				{
 					struct pipe_box box;
 					box.x = box.y = 0;
 					box.z = slice;
 					box.width = u_minify(width, level);
 					box.height = u_minify(height, level);
-					box.depth = 1;
+					box.depth = u_minify(depth, level);
 					immediate_pipe->transfer_inline_write(immediate_pipe, resource, level, PIPE_TRANSFER_WRITE | PIPE_TRANSFER_DISCARD | PIPE_TRANSFER_UNSYNCHRONIZED, &box, initial_data->pSysMem, initial_data->SysMemPitch, initial_data->SysMemSlicePitch);
 					++initial_data;
 				}
