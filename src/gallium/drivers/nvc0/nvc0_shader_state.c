@@ -213,6 +213,7 @@ nvc0_gmtyprog_validate(struct nvc0_context *nvc0)
    if (!gp) {
       BEGIN_RING(chan, RING_3D(GP_SELECT), 1);
       OUT_RING  (chan, 0x40);
+      IMMED_RING(chan, RING_3D(LAYER), 0);
       return;
    }
    if (!nvc0_program_validate(nvc0, gp))
@@ -225,6 +226,8 @@ nvc0_gmtyprog_validate(struct nvc0_context *nvc0)
    OUT_RING  (chan, gp->code_base);
    BEGIN_RING(chan, RING_3D(SP_GPR_ALLOC(4)), 1);
    OUT_RING  (chan, gp->max_gpr);
+   BEGIN_RING(chan, RING_3D(LAYER), 1);
+   OUT_RING  (chan, (gp->hdr[13] & (1 << 9)) ? NVC0_3D_LAYER_USE_GP : 0);
 
    nvc0_program_validate_clip(nvc0, gp);
 }
