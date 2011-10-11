@@ -352,7 +352,7 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
                         if(screen->is_format_supported(screen, format, PIPE_TEXTURE_2D, 0, PIPE_BIND_SAMPLER_VIEW))
 				support |= D3D11_FORMAT_SUPPORT_TEXTURE2D | sampler_view;
                         if(screen->is_format_supported(screen, format, PIPE_TEXTURE_CUBE, 0, PIPE_BIND_SAMPLER_VIEW))
-				support |= D3D11_FORMAT_SUPPORT_TEXTURE2D | sampler_view;
+				support |= D3D11_FORMAT_SUPPORT_TEXTURECUBE | sampler_view;
                         if(screen->is_format_supported(screen, format, PIPE_TEXTURE_3D, 0, PIPE_BIND_SAMPLER_VIEW))
 				support |= D3D11_FORMAT_SUPPORT_TEXTURE3D | sampler_view;
 
