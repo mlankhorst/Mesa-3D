@@ -1878,9 +1878,8 @@ Converter::handleInstruction(unsigned int pos)
       break;
 
    case SM4_OPCODE_RSQ:
-      FOR_EACH_DST0_ENABLED_CHANNEL32(c) {
-         mkOp1(op, dTy, dst0[c], mkOp1v(OP_ABS, dTy, getSSA(), src(0, c)));
-      }
+      FOR_EACH_DST0_ENABLED_CHANNEL32(c)
+         mkOp1(op, dTy, dst0[c], src(0, c));
       break;
 
    case SM4_OPCODE_SINCOS:
@@ -2093,6 +2092,7 @@ Converter::handleInstruction(unsigned int pos)
       mkFlow(OP_CONT, contBB, insn->insn.test_nz ? CC_P : CC_NOT_P, src(0, 0));
       bb->cfg.attach(&contBB->cfg, Graph::Edge::BACK);
       bb->cfg.attach(&nextBB->cfg, Graph::Edge::FORWARD);
+      setPosition(nextBB, true);
    }
       break;
 
