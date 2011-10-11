@@ -84,6 +84,8 @@ nvc0_validate_fb(struct nvc0_context *nvc0)
         if (likely(nouveau_bo_tile_layout(bo))) {
            struct nv50_miptree *mt = nv50_miptree(sf->base.texture);
 
+           assert(sf->base.texture->target != PIPE_BUFFER);
+
            OUT_RING(chan, sf->width);
            OUT_RING(chan, sf->height);
            OUT_RING(chan, nvc0_format_table[sf->base.format].rt);
@@ -104,9 +106,11 @@ nvc0_validate_fb(struct nvc0_context *nvc0)
            }
            OUT_RING(chan, nvc0_format_table[sf->base.format].rt);
            OUT_RING(chan, 1 << 12);
+           OUT_RING(chan, 1);
            OUT_RING(chan, 0);
            OUT_RING(chan, 0);
-           OUT_RING(chan, 0);
+
+           nvc0_resource_fence(res, NOUVEAU_BO_WR);
 
            assert(!fb->zsbuf);
         }

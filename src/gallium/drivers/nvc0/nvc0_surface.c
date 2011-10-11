@@ -317,9 +317,11 @@ nvc0_clear_render_target(struct pipe_context *pipe,
       }
       OUT_RING(chan, nvc0_format_table[sf->base.format].rt);
       OUT_RING(chan, 1 << 12);
+      OUT_RING(chan, 1);
       OUT_RING(chan, 0);
       OUT_RING(chan, 0);
-      OUT_RING(chan, 0);
+
+      IMMED_RING(chan, RING_3D(ZETA_ENABLE), 0);
 
       /* tiled textures don't have to be fenced, they're not mapped directly */
       nvc0_resource_fence(res, NOUVEAU_BO_WR);
