@@ -517,22 +517,17 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 				--num_shader_resource_views[s];
 			if((1 << s) & caps.stages_with_sampling)
 			{
-				struct pipe_sampler_view* views_to_bind[PIPE_MAX_SAMPLERS];
-				unsigned num_views_to_bind = shaders[s] ? shaders[s]->slot_to_resource.size() : 0;
-				for(unsigned i = 0; i < num_views_to_bind; ++i)
-				{
-					views_to_bind[i] = sampler_views[s][shaders[s]->slot_to_resource[i]];
-				}
+				const unsigned num_views_to_bind = num_shader_resource_views[s];
 				switch(s)
 				{
 				case PIPE_SHADER_VERTEX:
-					pipe->set_vertex_sampler_views(pipe, num_views_to_bind, views_to_bind);
+					pipe->set_vertex_sampler_views(pipe, num_views_to_bind, sampler_views[s]);
 					break;
 				case PIPE_SHADER_FRAGMENT:
-					pipe->set_fragment_sampler_views(pipe, num_views_to_bind, views_to_bind);
+					pipe->set_fragment_sampler_views(pipe, num_views_to_bind, sampler_views[s]);
 					break;
 				case PIPE_SHADER_GEOMETRY:
-					pipe->set_geometry_sampler_views(pipe, num_views_to_bind, views_to_bind);
+					pipe->set_geometry_sampler_views(pipe, num_views_to_bind, sampler_views[s]);
 					break;
 				}
 			}
@@ -544,23 +539,17 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 				--num_samplers[s];
 			if((1 << s) & caps.stages_with_sampling)
 			{
-				void* samplers_to_bind[PIPE_MAX_SAMPLERS];
-				unsigned num_samplers_to_bind = shaders[s] ? shaders[s]->slot_to_sampler.size() : 0;
-				for(unsigned i = 0; i < num_samplers_to_bind; ++i)
-				{
-					// index can be -1 to access sampler_csos[s].ld
-					samplers_to_bind[i] = *(sampler_csos[s].v + shaders[s]->slot_to_sampler[i]);
-				}
+				const unsigned num_samplers_to_bind = num_samplers[s];
 				switch(s)
 				{
 				case PIPE_SHADER_VERTEX:
-					pipe->bind_vertex_sampler_states(pipe, num_samplers_to_bind, samplers_to_bind);
+					pipe->bind_vertex_sampler_states(pipe, num_samplers_to_bind, sampler_csos[s].v);
 					break;
 				case PIPE_SHADER_FRAGMENT:
-					pipe->bind_fragment_sampler_states(pipe, num_samplers_to_bind, samplers_to_bind);
+					pipe->bind_fragment_sampler_states(pipe, num_samplers_to_bind, sampler_csos[s].v);
 					break;
 				case PIPE_SHADER_GEOMETRY:
-					pipe->bind_geometry_sampler_states(pipe, num_samplers_to_bind, samplers_to_bind);
+					pipe->bind_geometry_sampler_states(pipe, num_samplers_to_bind, sampler_csos[s].v);
 					break;
 				}
 			}
