@@ -707,7 +707,7 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 				elements[n].instance_divisor = input_element_descs[idx].InstanceDataStepRate;
 				if (input_element_descs[idx].InputSlotClass == D3D11_INPUT_PER_INSTANCE_DATA)
 					if (elements[n].instance_divisor == 0)
-						elements[n].instance_divisor = 1;
+						elements[n].instance_divisor = ~0; // XXX: can't specify 'never' to gallium
 
 				fprintf(stderr, "element[%i]: index = %i, format = %s, vbi %u, offset %u\n",
 					n, idx, util_format_name(elements[n].src_format),
