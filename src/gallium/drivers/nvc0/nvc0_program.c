@@ -105,8 +105,9 @@ nvc0_vp_assign_input_slots(struct nv50_ir_prog_info *info)
       switch (info->in[i].sn) {
       case TGSI_SEMANTIC_INSTANCEID:
       case TGSI_SEMANTIC_VERTEXID:
+         info->in[i].mask = 0x1;
          info->in[i].slot[0] =
-		 nvc0_shader_input_address(info->in[i].sn, 0, 0) / 4;
+            nvc0_shader_input_address(info->in[i].sn, 0, 0) / 4;
          continue;
       default:
          break;
