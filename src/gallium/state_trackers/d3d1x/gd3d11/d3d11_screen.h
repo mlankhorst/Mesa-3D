@@ -506,33 +506,43 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 	{
 		SYNCHRONIZED;
 
-		if (depth_stencil_state_desc->FrontFace.StencilPassOp >= D3D11_STENCIL_OP_COUNT ||
-		    depth_stencil_state_desc->FrontFace.StencilFailOp >= D3D11_STENCIL_OP_COUNT ||
-		    depth_stencil_state_desc->FrontFace.StencilDepthFailOp >= D3D11_STENCIL_OP_COUNT ||
-		    depth_stencil_state_desc->BackFace.StencilPassOp >= D3D11_STENCIL_OP_COUNT ||
-		    depth_stencil_state_desc->BackFace.StencilFailOp >= D3D11_STENCIL_OP_COUNT ||
-		    depth_stencil_state_desc->BackFace.StencilDepthFailOp >= D3D11_STENCIL_OP_COUNT)
-			return E_INVALIDARG;
-
 		pipe_depth_stencil_alpha_state state;
 		memset(&state, 0, sizeof(state));
+
 		state.depth.enabled = !!depth_stencil_state_desc->DepthEnable;
-		state.depth.writemask = depth_stencil_state_desc->DepthWriteMask;
-		state.depth.func = depth_stencil_state_desc->DepthFunc - 1;
+		if(depth_stencil_state_desc->DepthEnable)
+		{
+			if(depth_stencil_state_desc->DepthFunc == 0 ||
+			   depth_stencil_state_desc->DepthFunc >= 9)
+				return E_INVALIDARG;
+			state.depth.writemask = depth_stencil_state_desc->DepthWriteMask;
+			state.depth.func = depth_stencil_state_desc->DepthFunc - 1;
+		}
+
 		state.stencil[0].enabled = !!depth_stencil_state_desc->StencilEnable;
-		state.stencil[0].writemask = depth_stencil_state_desc->StencilWriteMask;
-		state.stencil[0].valuemask = depth_stencil_state_desc->StencilReadMask;
-		state.stencil[0].zpass_op = d3d11_to_pipe_stencil_op[depth_stencil_state_desc->FrontFace.StencilPassOp];
-		state.stencil[0].fail_op = d3d11_to_pipe_stencil_op[depth_stencil_state_desc->FrontFace.StencilFailOp];
-		state.stencil[0].zfail_op = d3d11_to_pipe_stencil_op[depth_stencil_state_desc->FrontFace.StencilDepthFailOp];
-		state.stencil[0].func = depth_stencil_state_desc->FrontFace.StencilFunc - 1;
-		state.stencil[1].enabled = !!depth_stencil_state_desc->StencilEnable;
-		state.stencil[1].writemask = depth_stencil_state_desc->StencilWriteMask;
-		state.stencil[1].valuemask = depth_stencil_state_desc->StencilReadMask;
-		state.stencil[1].zpass_op = d3d11_to_pipe_stencil_op[depth_stencil_state_desc->BackFace.StencilPassOp];
-		state.stencil[1].fail_op = d3d11_to_pipe_stencil_op[depth_stencil_state_desc->BackFace.StencilFailOp];
-		state.stencil[1].zfail_op = d3d11_to_pipe_stencil_op[depth_stencil_state_desc->BackFace.StencilDepthFailOp];
-		state.stencil[1].func = depth_stencil_state_desc->BackFace.StencilFunc - 1;
+		if(depth_stencil_state_desc->StencilEnable)
+		{
+			if(depth_stencil_state_desc->FrontFace.StencilPassOp >= D3D11_STENCIL_OP_COUNT ||
+			   depth_stencil_state_desc->FrontFace.StencilFailOp >= D3D11_STENCIL_OP_COUNT ||
+			   depth_stencil_state_desc->FrontFace.StencilDepthFailOp >= D3D11_STENCIL_OP_COUNT ||
+			   depth_stencil_state_desc->BackFace.StencilPassOp >= D3D11_STENCIL_OP_COUNT ||
+			   depth_stencil_state_desc->BackFace.StencilFailOp >= D3D11_STENCIL_OP_COUNT ||
+			   depth_stencil_state_desc->BackFace.StencilDepthFailOp >= D3D11_STENCIL_OP_COUNT)
+				return E_INVALIDARG;
+			state.stencil[0].writemask = depth_stencil_state_desc->StencilWriteMask;
+			state.stencil[0].valuemask = depth_stencil_state_desc->StencilReadMask;
+			state.stencil[0].zpass_op = d3d11_to_pipe_stencil_op[depth_stencil_state_desc->FrontFace.StencilPassOp];
+			state.stencil[0].fail_op = d3d11_to_pipe_stencil_op[depth_stencil_state_desc->FrontFace.StencilFailOp];
+			state.stencil[0].zfail_op = d3d11_to_pipe_stencil_op[depth_stencil_state_desc->FrontFace.StencilDepthFailOp];
+			state.stencil[0].func = depth_stencil_state_desc->FrontFace.StencilFunc - 1;
+			state.stencil[1].enabled = !!depth_stencil_state_desc->StencilEnable;
+			state.stencil[1].writemask = depth_stencil_state_desc->StencilWriteMask;
+			state.stencil[1].valuemask = depth_stencil_state_desc->StencilReadMask;
+			state.stencil[1].zpass_op = d3d11_to_pipe_stencil_op[depth_stencil_state_desc->BackFace.StencilPassOp];
+			state.stencil[1].fail_op = d3d11_to_pipe_stencil_op[depth_stencil_state_desc->BackFace.StencilFailOp];
+			state.stencil[1].zfail_op = d3d11_to_pipe_stencil_op[depth_stencil_state_desc->BackFace.StencilDepthFailOp];
+			state.stencil[1].func = depth_stencil_state_desc->BackFace.StencilFunc - 1;
+		}
 
 		if(!depth_stencil_state)
 			return S_FALSE;
