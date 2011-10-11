@@ -563,8 +563,13 @@ NVC0LoweringPass::handleSQRT(Instruction *i)
 {
    Instruction *rsq = bld.mkOp1(OP_RSQ, TYPE_F32,
                                 bld.getSSA(), i->getSrc(0));
+#if 1
+   i->op = OP_RCP;
+   i->setSrc(0, rsq->getDef(0));
+#else
    i->op = OP_MUL;
    i->setSrc(1, rsq->getDef(0));
+#endif
 
    return true;
 }
