@@ -1438,7 +1438,7 @@ changed:
 		}
 	}
 
-	static unsigned d3d11_subresource_to_face(struct pipe_resource* resource, unsigned subresource)
+	static unsigned d3d11_subresource_to_layer(struct pipe_resource* resource, unsigned subresource)
 	{
 		if(subresource <= resource->last_level)
 		{
@@ -1468,9 +1468,9 @@ changed:
 		if(resource->transfers.count(subresource))
 			return E_FAIL;
 		unsigned level = d3d11_subresource_to_level(resource->resource, subresource);
-		unsigned face = d3d11_subresource_to_face(resource->resource, subresource);
+		unsigned layer = d3d11_subresource_to_layer(resource->resource, subresource);
 		pipe_box box = d3d11_to_pipe_box(resource->resource, level, 0);
-		/* XXX the translation from subresource to level/face(zslice/array layer) isn't quite right */
+		box.z += layer;
 		unsigned usage = 0;
 		if(map_type == D3D11_MAP_READ)
 			usage = PIPE_TRANSFER_READ;
@@ -1529,11 +1529,12 @@ changed:
 		GalliumD3D11Resource<>* dst = (GalliumD3D11Resource<>*)dst_resource;
 		GalliumD3D11Resource<>* src = (GalliumD3D11Resource<>*)src_resource;
 		unsigned dst_level = d3d11_subresource_to_level(dst->resource, dst_subresource);
-		unsigned dst_face = d3d11_subresource_to_face(dst->resource, dst_subresource);
+		unsigned dst_layer = d3d11_subresource_to_layer(dst->resource, dst_subresource);
 		unsigned src_level = d3d11_subresource_to_level(src->resource, src_subresource);
-		unsigned src_face = d3d11_subresource_to_face(src->resource, src_subresource);
-		/* XXX the translation from subresource to level/face(zslice/array layer) isn't quite right */
+		unsigned src_layer = d3d11_subresource_to_layer(src->resource, src_subresource);
 		pipe_box box = d3d11_to_pipe_box(src->resource, src_level, src_box);
+		dst_z += dst_layer;
+		box.z += src_layer;
 		{
 			pipe->resource_copy_region(pipe,
 				dst->resource, dst_level, dst_x, dst_y, dst_z,
@@ -1557,7 +1558,8 @@ changed:
 				layers = 6;
 			else if (dst->resource->target == PIPE_TEXTURE_3D)
 				layers = u_minify(dst->resource->depth0, level);
-			/* else layers = dst->resource->array_size; */
+			else
+				layers = dst->resource->array_size;
 			box.x = box.y = box.z = 0;
 			box.width = u_minify(dst->resource->width0, level);
 			box.height = u_minify(dst->resource->height0, level);
@@ -1579,8 +1581,9 @@ changed:
 		SYNCHRONIZED;
 		GalliumD3D11Resource<>* dst = (GalliumD3D11Resource<>*)dst_resource;
 		unsigned dst_level = d3d11_subresource_to_level(dst->resource, dst_subresource);
-		/* XXX the translation from subresource to level/face(zslice/array layer) isn't quite right */
+		unsigned dst_layer = d3d11_subresource_to_layer(dst->resource, dst_subresource);
 		pipe_box box = d3d11_to_pipe_box(dst->resource, dst_level, pDstBox);
+		box.z += dst_layer;
 		pipe->transfer_inline_write(pipe, dst->resource, dst_level, PIPE_TRANSFER_WRITE, &box, pSrcData, src_row_pitch, src_depth_pitch);
 	}
 
@@ -1747,8 +1750,8 @@ changed:
 		info.dst.res = dst->resource;
 		info.src.res = src->resource;
 		info.dst.level = 0;
-		info.dst.layer = d3d11_subresource_to_face(dst->resource, dst_subresource);
-		info.src.layer = d3d11_subresource_to_face(src->resource, src_subresource);
+		info.dst.layer = d3d11_subresource_to_layer(dst->resource, dst_subresource);
+		info.src.layer = d3d11_subresource_to_layer(src->resource, src_subresource);
 
 		info.src.x0 = 0;
 		info.src.x1 = info.src.res->width0;
