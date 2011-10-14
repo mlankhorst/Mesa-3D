@@ -58,7 +58,7 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 	refcnt_ptr<GalliumD3D11SamplerState, PtrTraits> samplers[D3D11_STAGES][D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT];
 	refcnt_ptr<GalliumD3D11Buffer, PtrTraits> input_buffers[D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT];
 	refcnt_ptr<GalliumD3D11RenderTargetView, PtrTraits> render_target_views[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT];
-	refcnt_ptr<GalliumD3D11Buffer, PtrTraits> so_targets[D3D11_SO_BUFFER_SLOT_COUNT];
+	refcnt_ptr<GalliumD3D11Buffer, PtrTraits> so_buffers[D3D11_SO_BUFFER_SLOT_COUNT];
 
 #if API >= 11
 	refcnt_ptr<ID3D11UnorderedAccessView, PtrTraits> cs_unordered_access_views[D3D11_PS_CS_UAV_REGISTER_COUNT];
@@ -89,14 +89,13 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 	// derived state
 	int primitive_mode;
 	struct pipe_vertex_buffer vertex_buffers[D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT];
-	struct pipe_resource* so_buffers[D3D11_SO_BUFFER_SLOT_COUNT];
+	struct pipe_stream_output_target* so_targets[D3D11_SO_BUFFER_SLOT_COUNT];
 	struct pipe_sampler_view* sampler_views[D3D11_STAGES][D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT];
 	struct
 	{
 		void* ld; // accessed with a -1 index from v
 		void* v[D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT];
 	} sampler_csos[D3D11_STAGES];
-	struct pipe_resource * buffers[D3D11_SO_BUFFER_SLOT_COUNT];
 	unsigned num_shader_resource_views[D3D11_STAGES];
 	unsigned num_samplers[D3D11_STAGES];
 	unsigned num_vertex_buffers;
@@ -1303,34 +1302,53 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 		const unsigned *new_offsets)
 	{
 		SYNCHRONIZED;
-		unsigned i;
+
+		bool changed = false;
+		unsigned new_count, i;
 		if(!new_so_targets)
 			count = 0;
-		bool changed = false;
-		for(i = 0; i < count; ++i)
+		for(new_count = 0, i = 0; i < count; ++i)
 		{
-			ID3D11Buffer* buffer = new_so_targets[i];
-			if(buffer != so_targets[i].p || new_offsets[i] != so_offsets[i])
-			{
-				so_buffers[i] = buffer ? ((GalliumD3D11Buffer*)buffer)->resource : 0;
-				so_targets[i] = buffer;
-				so_offsets[i] = new_offsets[i];
-				changed = true;
-			}
-		}
-		for(; i < D3D11_SO_BUFFER_SLOT_COUNT; ++i)
-		{
-			if(so_targets[i].p || so_offsets[i])
-			{
-				changed = true;
-				so_targets[i] = (ID3D11Buffer*)0;
-				so_offsets[i] = 0;
-			}
-		}
-		num_so_targets = count;
+			GalliumD3D11Buffer* buffer = static_cast<GalliumD3D11Buffer*>(new_so_targets[i]);
 
-		if(changed && caps.so)
-			pipe->set_stream_output_buffers(pipe, so_buffers, (int*)so_offsets, num_so_targets);
+			if(buffer != so_buffers[i].p)
+			{
+				changed = true;
+				so_buffers[i] = buffer;
+				so_targets[i] = buffer->so_target;
+			}
+			if(!so_buffers[i])
+				continue;
+			new_count = i;
+
+			if(new_offsets[i] == (unsigned)-1)
+			{
+				assert(so_targets[i]);
+				continue;
+			}
+
+			if(so_targets[i] && new_offsets[i] == so_targets[i]->buffer_offset)
+			{
+				pipe->reset_stream_output_targets(pipe, 1, &so_targets[i]);
+			}
+			else
+			{
+				pipe_stream_output_target_reference(&buffer->so_target, NULL);
+				buffer->so_target = pipe->create_stream_output_target(
+					pipe, buffer->resource, new_offsets[i], buffer->resource->width0);
+				so_targets[i] = buffer->so_target;
+				changed = true;
+			}
+		}
+		if (i < num_so_targets) {
+			changed = true;
+			for(; i < num_so_targets; ++i)
+				so_buffers[i] = (GalliumD3D11Buffer*)0;
+		}
+		num_so_targets = new_count;
+
+		if(likely(caps.so) && changed)
+			pipe->set_stream_output_targets(pipe, num_so_targets, so_targets);
 	}
 
 	virtual void STDMETHODCALLTYPE SOGetTargets(
@@ -1709,8 +1727,8 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 				pipe->set_constant_buffer(pipe, s, i, constant_buffers[s][i].p ? constant_buffers[s][i].p->resource : 0);
 		}
 
-		if(caps.so)
-			pipe->set_stream_output_buffers(pipe, so_buffers, (int*)so_offsets, num_so_targets);
+		if(caps.so && num_so_targets)
+			pipe->set_stream_output_targets(pipe, num_so_targets, so_targets);
 
 		update_flags |= (1 << (UPDATE_SAMPLERS_SHIFT + D3D11_STAGE_VS)) | (1 << (UPDATE_VIEWS_SHIFT + D3D11_STAGE_VS));
 		update_flags |= (1 << (UPDATE_SAMPLERS_SHIFT + D3D11_STAGE_GS)) | (1 << (UPDATE_VIEWS_SHIFT + D3D11_STAGE_GS));

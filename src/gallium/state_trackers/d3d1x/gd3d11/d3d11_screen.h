@@ -1351,9 +1351,16 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 #if API >= 11
 			, ID3D11ClassLinkage *class_linkage
 #endif
+			, struct pipe_stream_output_info *so_info
 			)
 	{
 		bool dump = debug_get_option_dump_shaders();
+
+		void *shader_cso;
+		struct pipe_shader_state tgsi_shader;
+		memset(&tgsi_shader, 0, sizeof(tgsi_shader));
+		if(so_info)
+			memcpy(&tgsi_shader.stream_output, so_info, sizeof(tgsi_shader.stream_output));
 
 		dxbc_chunk_header* sm4_chunk = dxbc_find_shader_bytecode(shader_bytecode, bytecode_length);
 		if(!sm4_chunk)
@@ -1365,6 +1372,12 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 
 		if(dump)
 			sm4->dump();
+
+		if(so_info && sm4->version.type != D3D11_SHVER_GEOMETRY_SHADER)
+		{
+			shader_cso = immediate_pipe->create_gs_state(immediate_pipe, &tgsi_shader);
+			return (GalliumD3D11Shader<>*)new GalliumD3D11GeometryShader(this, shader_cso);
+		}
 
 		struct dxbc_chunk_signature *sig;
 
@@ -1380,8 +1393,6 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 		if (sig)
 			sm4->num_params_patch = dxbc_parse_signature(sig, &sm4->params_patch);
 
-		struct pipe_shader_state tgsi_shader;
-		memset(&tgsi_shader, 0, sizeof(tgsi_shader));
 		tgsi_shader.tokens = (const tgsi_token*)sm4_to_tgsi(*sm4);
 		if(!tgsi_shader.tokens)
 			return 0;
@@ -1389,7 +1400,6 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 		if(dump)
 			tgsi_dump(tgsi_shader.tokens, 0);
 
-		void* shader_cso;
 		GalliumD3D11Shader<>* shader;
 
 		switch(type)
@@ -1435,7 +1445,7 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 		ID3D11##Stage##Shader **out_shader) \
 	{ \
 		SYNCHRONIZED; \
-		GalliumD3D11##Stage##Shader* shader = (GalliumD3D11##Stage##Shader*)create_stage_shader(PIPE_SHADER_##GALLIUM, PASS_SHADER_ARGS); \
+		GalliumD3D11##Stage##Shader* shader = (GalliumD3D11##Stage##Shader*)create_stage_shader(PIPE_SHADER_##GALLIUM, PASS_SHADER_ARGS, NULL); \
 		if(!shader) \
 			return E_FAIL; \
 		if(out_shader) \
@@ -1483,10 +1493,59 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 		ID3D11GeometryShader **out_geometry_shader)
 	{
 		SYNCHRONIZED;
+		GalliumD3D11GeometryShader* gs;
+#if API >= 11
+		if (rasterized_stream != 0)
+			return E_NOTIMPL; // not yet supported by gallium
+#endif
+		struct dxbc_chunk_signature* sig = dxbc_find_signature(shader_bytecode, bytecode_length, true, false);
+		if (!sig)
+			return E_INVALIDARG;
+		D3D11_SIGNATURE_PARAMETER_DESC* out;
+		unsigned num_outputs = dxbc_parse_signature(sig, &out);
 
-		return E_NOTIMPL;
+		struct pipe_stream_output_state so;
+		memset(&so, 0, sizeof(so));
 
-		// remember to return S_FALSE if ppGeometyShader == NULL and the shader is OK
+#if API >= 11
+		if (num_strides)
+			so.stride = buffer_strides[0];
+		if (num_strides > 1)
+			debug_printf("Warning: multiple user-specified strides not implemented !\n");
+#else
+		so.stride = output_stream_stride;
+#endif
+		std::unordered_map<std::pair<c_string, unsigned>, unsigned> semantic_map;
+		for(unsigned i = 0; i < num_outputs; ++i)
+			semantic_map[std::make_pair(c_string(out[i].SemanticName), out[i].SemanticIndex)] = i;
+
+		for(unsigned i = 0; i < num_entries; ++i)
+		{
+			std::unordered_map<std::pair<c_string, unsigned>, unsigned>::iterator iter = semantic_map.find(
+				std::make_pair(c_string(so_declaration[i].SemanticName), so_declaration[i].SemanticIndex));
+			if (iter == semantic_map.end())
+				continue;
+			const int idx = iter->second;
+			const int first_comp = ffs(out[idx].Mask) - 1 + so_declaration[i].StartComponent;
+			so.output_buffer[i] = so_declaration[i].OutputSlot;
+			so.register_index[i] = out[idx].Register;
+			so.register_mask[i] = ((1 << so_declaration[i].ComponentCount) - 1) << first_comp;
+			++so.num_outputs;
+		}
+		if(out)
+			free(out);
+
+		gs = reinterpret_cast<GalliumD3D11GeometryShader*>(create_stage_shader(PIPE_SHADER_GEOMETRY, PASS_SHADER_ARGS, &so));
+		if (!gs)
+			return E_FAIL;
+
+		if (!out_geometry_shader) {
+			gs->Release();
+			return S_FALSE;
+		}
+		*out_geometry_shader = gs;
+
+		return S_OK;
 	}
 
 #if API >= 11
