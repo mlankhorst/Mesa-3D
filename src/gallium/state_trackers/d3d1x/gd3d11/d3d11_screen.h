@@ -1373,12 +1373,6 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 		if(dump)
 			sm4->dump();
 
-		if(so_info && sm4->version.type != D3D11_SHVER_GEOMETRY_SHADER)
-		{
-			shader_cso = immediate_pipe->create_gs_state(immediate_pipe, &tgsi_shader);
-			return (GalliumD3D11Shader<>*)new GalliumD3D11GeometryShader(this, shader_cso);
-		}
-
 		struct dxbc_chunk_signature *sig;
 
 		sig = dxbc_find_signature(shader_bytecode, bytecode_length, DXBC_FIND_INPUT_SIGNATURE);
@@ -1392,6 +1386,13 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 		sig = dxbc_find_signature(shader_bytecode, bytecode_length, DXBC_FIND_PATCH_SIGNATURE);
 		if (sig)
 			sm4->num_params_patch = dxbc_parse_signature(sig, &sm4->params_patch);
+
+		if(so_info && sm4->version.type != D3D11_SHVER_GEOMETRY_SHADER)
+		{
+			tgsi_shader.tokens = (const tgsi_token*)sm4_to_tgsi_linkage_only(*sm4);
+			shader_cso = immediate_pipe->create_gs_state(immediate_pipe, &tgsi_shader);
+			return (GalliumD3D11Shader<>*)new GalliumD3D11GeometryShader(this, shader_cso);
+		}
 
 		tgsi_shader.tokens = (const tgsi_token*)sm4_to_tgsi(*sm4);
 		if(!tgsi_shader.tokens)

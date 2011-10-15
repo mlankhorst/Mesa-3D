@@ -804,3 +804,41 @@ void* sm4_to_tgsi(struct sm4_program& program)
 	sm4_to_tgsi_converter conv(program);
 	return conv.translate();
 }
+
+void* sm4_to_tgsi_linkage_only(struct sm4_program& program)
+{
+	struct ureg_program* ureg = ureg_create(TGSI_PROCESSOR_GEOMETRY);
+
+	uint64_t already = 0;
+	for(unsigned n = 0, i = 0; i < program.num_params_out; ++i)
+	{
+		unsigned sn, si;
+
+		if(already & (1ULL << sm4.params_out[i].Register))
+			continue;
+		already |= 1ULL << sm4.params_out[i].Register;
+
+		switch(sm4.params_out[i].SystemValueType)
+		{
+		case D3D_NAME_UNDEFINED:
+			sn = TGSI_SEMANTIC_GENERIC;
+			si = n++;
+			break;
+		case D3D_NAME_CULL_DISTANCE:
+		case D3D_NAME_CLIP_DISTANCE:
+			// FIXME
+			sn = 0;
+			si = sm4.params_out[i].SemanticIndex;
+			assert(0);
+			break;
+		default:
+			continue;
+		}
+
+		ureg_DECL_output(ureg, sn, si);
+	}
+
+	const struct tgsi_token* tokens = ureg_get_tokens(ureg, 0);
+	ureg_destroy(ureg);
+	return (void*)tokens;
+}

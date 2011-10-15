@@ -1335,7 +1335,7 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 			{
 				pipe_stream_output_target_reference(&buffer->so_target, NULL);
 				buffer->so_target = pipe->create_stream_output_target(
-					pipe, buffer->resource, new_offsets[i], buffer->resource->width0);
+					pipe, buffer->resource, new_offsets[i], buffer->resource->width0 - new_offsets[i]);
 				so_targets[i] = buffer->so_target;
 				changed = true;
 			}
