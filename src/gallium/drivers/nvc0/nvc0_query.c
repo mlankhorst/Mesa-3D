@@ -121,7 +121,7 @@ nvc0_query_create(struct pipe_context *pipe, unsigned type)
    case PIPE_QUERY_GPU_FINISHED:
    case PIPE_QUERY_PRIMITIVES_GENERATED:
    case PIPE_QUERY_PRIMITIVES_EMITTED:
-   case NVC0_QUERY_TFB_STATE:
+   case NVC0_QUERY_TFB_TARGET:
       space = 32;
       break;
    default:
@@ -298,7 +298,7 @@ nvc0_query_end(struct pipe_context *pipe, struct pipe_query *pq)
       nvc0_query_get(chan, q, 0x80, 0x0d808002); /* TCP, LAUNCHES */
       nvc0_query_get(chan, q, 0x90, 0x0e809002); /* TEP, LAUNCHES */
       break;
-   case NVC0_QUERY_TFB_STATE:
+   case NVC0_QUERY_TFB_TARGET:
       nvc0_query_get(chan, q, 0x00, 0x1d005002); /* TFB, BYTES_WRITTEN */
       nvc0_query_get(chan, q, 0x10, 0x00805002); /* TFB, PRIMS_WRITTEN */
       break;
@@ -458,12 +458,12 @@ nvc0_render_condition(struct pipe_context *pipe,
 
 void
 nvc0_query_pushbuf_submit(struct nvc0_context *nvc0,
-                          struct pipe_query *pq, unsigned result)
+                          struct pipe_query *pq, unsigned result_offset)
 {
    struct nvc0_query *q = nvc0_query(pq);
 
    nouveau_pushbuf_submit(nvc0->screen->base.channel,
-                          q->bo, q->offset + result * 16, 4);
+                          q->bo, q->offset + result_offset, 4);
 }
 
 void
