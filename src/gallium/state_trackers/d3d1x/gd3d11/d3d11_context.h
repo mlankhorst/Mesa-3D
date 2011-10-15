@@ -1373,6 +1373,7 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 		ID3D11Asynchronous *async)
 	{
 		SYNCHRONIZED;
+		assert(async);
 		if(caps.queries)
 			pipe->begin_query(pipe, ((GalliumD3D11Asynchronous<>*)async)->query);
 	}
@@ -1381,6 +1382,7 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 		ID3D11Asynchronous *async)
 	{
 		SYNCHRONIZED;
+		assert(async);
 		if(caps.queries)
 			pipe->end_query(pipe, ((GalliumD3D11Asynchronous<>*)async)->query);
 	}
@@ -1392,12 +1394,14 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 		unsigned get_data_flags)
 	{
 		SYNCHRONIZED;
+		assert(iasync);
 		if(!caps.queries)
 			return E_NOTIMPL;
 
 		GalliumD3D11Asynchronous<>* async = (GalliumD3D11Asynchronous<>*)iasync;
 		void* tmp_data = alloca(async->data_size);
-		boolean ret = pipe->get_query_result(pipe, async->query, !(get_data_flags & D3D11_ASYNC_GETDATA_DONOTFLUSH), tmp_data);
+		boolean wait = !(get_data_flags & D3D11_ASYNC_GETDATA_DONOTFLUSH);
+		boolean ret = pipe->get_query_result(pipe, async->query, wait, tmp_data);
 		if(out_data)
 			memcpy(out_data, tmp_data, std::min(async->data_size, data_size));
 		return ret ? S_OK : S_FALSE;
@@ -1405,24 +1409,23 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 
 	void set_render_condition()
 	{
-		if(caps.render_condition)
+		if(unlikely(!caps.render_condition))
+			return;
+		if(!render_predicate)
 		{
-			if(!render_predicate)
-				pipe->render_condition(pipe, 0, 0);
-			else
-			{
-				GalliumD3D11Predicate* predicate = (GalliumD3D11Predicate*)render_predicate.p;
-				if(!render_predicate_value && predicate->desc.Query == D3D11_QUERY_OCCLUSION_PREDICATE)
-				{
-					unsigned mode = (predicate->desc.MiscFlags & D3D11_QUERY_MISC_PREDICATEHINT) ? PIPE_RENDER_COND_NO_WAIT : PIPE_RENDER_COND_WAIT;
-					pipe->render_condition(pipe, predicate->query, mode);
-				}
-				else
-				{
-					/* TODO: add inverted predication to Gallium*/
-					pipe->render_condition(pipe, 0, 0);
-				}
-			}
+			pipe->render_condition(pipe, 0, 0);
+		}
+		else
+		{
+			GalliumD3D11Predicate* predicate = (GalliumD3D11Predicate*)render_predicate.p;
+
+			unsigned mode = 0;
+			if (predicate->desc.MiscFlags & D3D11_QUERY_MISC_PREDICATEHINT)
+				mode = PIPE_RENDER_COND_NO_WAIT;
+			if (render_predicate_value)
+				mode |= PIPE_RENDER_COND_NEGATED;
+
+			pipe->render_condition(pipe, predicate->query, mode);
 		}
 	}
 
@@ -1490,6 +1493,8 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 	{
 		SYNCHRONIZED;
 		GalliumD3D11Resource<>* resource = (GalliumD3D11Resource<>*)iresource;
+		if(!iresource)
+			return E_INVALIDARG;
 		if(resource->transfers.count(subresource))
 			return E_FAIL;
 		unsigned level = d3d11_subresource_to_level(resource->resource, subresource);
