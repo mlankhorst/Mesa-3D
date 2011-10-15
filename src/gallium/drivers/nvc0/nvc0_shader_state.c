@@ -88,7 +88,9 @@ nvc0_program_validate(struct nvc0_context *nvc0, struct nvc0_program *prog)
          return FALSE;
    }
 
-   return nvc0_program_upload_code(nvc0, prog);
+   if (likely(prog->code_size))
+      return nvc0_program_upload_code(nvc0, prog);
+   return TRUE; /* stream output info only */
 }
 
 void
@@ -210,14 +212,15 @@ nvc0_gmtyprog_validate(struct nvc0_context *nvc0)
    struct nouveau_channel *chan = nvc0->screen->base.channel;
    struct nvc0_program *gp = nvc0->gmtyprog;
 
-   if (!gp) {
+   if (gp)
+      nvc0_program_validate(nvc0, gp);
+   /* we allow GPs with no code for specifying stream output state only */
+   if (!gp || !gp->code_size) {
       BEGIN_RING(chan, RING_3D(GP_SELECT), 1);
       OUT_RING  (chan, 0x40);
       IMMED_RING(chan, RING_3D(LAYER), 0);
       return;
    }
-   if (!nvc0_program_validate(nvc0, gp))
-         return;
    nvc0_program_update_context_state(nvc0, gp, 3);
 
    BEGIN_RING(chan, RING_3D(GP_SELECT), 1);
@@ -232,58 +235,67 @@ nvc0_gmtyprog_validate(struct nvc0_context *nvc0)
    nvc0_program_validate_clip(nvc0, gp);
 }
 
-/* It's *is* kind of shader related. We need to inspect the program
- * to get the output locations right.
- */
 void
 nvc0_tfb_validate(struct nvc0_context *nvc0)
 {
    struct nouveau_channel *chan = nvc0->screen->base.channel;
-   struct nvc0_program *vp;
-   struct nvc0_transform_feedback_state *tfb = nvc0->tfb;
-   int b;
+   struct nvc0_transform_feedback_state *tfb;
+   int b, n;
 
-   BEGIN_RING(chan, RING_3D(TFB_ENABLE), 1);
-   if (!tfb) {
-      OUT_RING(chan, 0);
-      return;
-   }
-   OUT_RING(chan, 1);
+   if (nvc0->gmtyprog) tfb = nvc0->gmtyprog->tfb;
+   else
+   if (nvc0->tevlprog) tfb = nvc0->tevlprog->tfb;
+   else
+      tfb = nvc0->vertprog->tfb;
 
-   vp = nvc0->vertprog ? nvc0->vertprog : nvc0->gmtyprog;
+   IMMED_RING(chan, RING_3D(TFB_ENABLE), (tfb && nvc0->num_tfbbufs) ? 1 : 0);
 
-   for (b = 0; b < nvc0->num_tfbbufs; ++b) {
+   if (nvc0->dirty & NVC0_NEW_TFB_TARGETS)
+      nvc0_bufctx_reset(nvc0, NVC0_BUFCTX_TFB);
+
+   for (n = 0, b = 0; b < nvc0->num_tfbbufs; ++b) {
       uint8_t idx, var[128];
-      int i, n;
-      struct nv04_resource *buf = nv04_resource(nvc0->tfbbuf[b]);
+      int i;
 
-      BEGIN_RING(chan, RING_3D(TFB_BUFFER_ENABLE(b)), 5);
-      OUT_RING  (chan, 1);
-      OUT_RESRCh(chan, buf, nvc0->tfb_offset[b], NOUVEAU_BO_WR);
-      OUT_RESRCl(chan, buf, nvc0->tfb_offset[b], NOUVEAU_BO_WR);
-      OUT_RING  (chan, buf->base.width0 - nvc0->tfb_offset[b]);
-      OUT_RING  (chan, 0); /* TFB_PRIMITIVE_ID <- offset ? */
+      if (nvc0->dirty & NVC0_NEW_TFB_TARGETS) {
+         struct nvc0_so_target *targ = nvc0->tfbbuf[b];
+         struct nv04_resource *buf = targ->pipe.buffer;
 
-      if (!(nvc0->dirty & NVC0_NEW_TFB))
+         targ->stride = tfb->stride[b];
+
+         BEGIN_RING(chan, RING_3D(TFB_BUFFER_ENABLE(b)), 5);
+         OUT_RING  (chan, 1);
+         OUT_RESRCh(chan, buf, targ->pipe.buffer_offset, NOUVEAU_BO_WR);
+         OUT_RESRCl(chan, buf, targ->pipe.buffer_offset, NOUVEAU_BO_WR);
+         OUT_RING  (chan, targ->pipe.buffer_size);
+         if (!targ->clean)
+            nvc0_query_pushbuf_submit(nvc0, targ->pq, 0x10);
+         else
+            OUT_RING(chan, 0); /* TFB_PRIMITIVE_ID */
+
+         nvc0_bufctx_add_resident(nvc0, NVC0_BUFCTX_TFB, buf, NOUVEAU_BO_WR);
+      }
+      if (nvc0->tfb_state == tfb || unlikely(!tfb))
          continue;
 
-      BEGIN_RING(chan, RING_3D(TFB_UNK07X0(b)), 3);
+      BEGIN_RING(chan, RING_3D(TFB_STREAM(b)), 3);
       OUT_RING  (chan, 0);
       OUT_RING  (chan, tfb->varying_count[b]);
       OUT_RING  (chan, tfb->stride[b]);
 
-      n = b ? tfb->varying_count[b - 1] : 0;
-      i = 0;
-      for (; i < tfb->varying_count[b]; ++i) {
-         idx = tfb->varying_index[n + i];
-         var[i] = vp->vp.out_pos[idx >> 2] + (idx & 3);
-      }
-      for (; i & 3; ++i)
+      for (i = 0; i < tfb->varying_count[b]; ++i)
+         var[i] = tfb->varying_index[n + i];
+      for (; i & 3; ++i) /* zero rest of method word bits */
          var[i] = 0;
+      n += tfb->varying_count[b];
 
       BEGIN_RING(chan, RING_3D(TFB_VARYING_LOCS(b, 0)), i / 4);
       OUT_RINGp (chan, var, i / 4);
    }
-   for (; b < 4; ++b)
-      IMMED_RING(chan, RING_3D(TFB_BUFFER_ENABLE(b)), 0);
+   if (tfb && nvc0->num_tfbbufs) /* otherwise updated when re-enabled */
+      for (; b < 4; ++b)
+         IMMED_RING(chan, RING_3D(TFB_BUFFER_ENABLE(b)), 0);
+
+   if (tfb)
+      nvc0->tfb_state = tfb;
 }

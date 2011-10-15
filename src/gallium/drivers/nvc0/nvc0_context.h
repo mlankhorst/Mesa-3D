@@ -49,8 +49,7 @@
 #define NVC0_NEW_CONSTBUF     (1 << 18)
 #define NVC0_NEW_TEXTURES     (1 << 19)
 #define NVC0_NEW_SAMPLERS     (1 << 20)
-#define NVC0_NEW_TFB          (1 << 21)
-#define NVC0_NEW_TFB_BUFFERS  (1 << 22)
+#define NVC0_NEW_TFB_TARGETS  (1 << 21)
 
 #define NVC0_BUFCTX_CONSTANT 0
 #define NVC0_BUFCTX_FRAME    1
@@ -74,6 +73,7 @@ struct nvc0_context {
       int32_t index_bias;
       boolean prim_restart;
       boolean early_z;
+      boolean rasterizer_discard;
       uint8_t num_vtxbufs;
       uint8_t num_vtxelts;
       uint8_t num_textures[5];
@@ -125,10 +125,9 @@ struct nvc0_context {
 
    boolean vbo_push_hint;
 
-   struct nvc0_transform_feedback_state *tfb;
-   struct pipe_resource *tfbbuf[4];
+   struct nvc0_transform_feedback_state *tfb_state;
+   struct pipe_stream_output_target *tfbbuf[4];
    unsigned num_tfbbufs;
-   unsigned tfb_offset[4];
 
    struct draw_context *draw;
 };
