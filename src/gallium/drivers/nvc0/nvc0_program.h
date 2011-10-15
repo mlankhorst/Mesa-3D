@@ -29,6 +29,8 @@ struct nvc0_program {
    struct {
       uint8_t edgeflag;
       uint8_t num_ucps;
+      uint8_t clip_enable;
+      uint8_t clip_mode;
       uint8_t out_pos[PIPE_MAX_SHADER_OUTPUTS];
    } vp;
    struct {

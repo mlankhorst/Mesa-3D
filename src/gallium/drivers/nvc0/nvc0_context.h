@@ -80,6 +80,8 @@ struct nvc0_context {
       uint8_t num_samplers[5];
       uint8_t tls_required; /* bitmask of shader types using l[] */
       uint8_t c14_bound; /* whether immediate array constbuf is bound */
+      uint8_t clip_enable;
+      uint32_t clip_mode;
       uint16_t scissor;
       uint32_t uniform_buffer_bound[5];
    } state;

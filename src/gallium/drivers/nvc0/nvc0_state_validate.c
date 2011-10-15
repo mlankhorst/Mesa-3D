@@ -267,11 +267,6 @@ nvc0_validate_clip(struct nvc0_context *nvc0)
       BEGIN_RING_1I(chan, RING_3D(CB_POS), nvc0->clip.nr * 4 + 1);
       OUT_RING  (chan, 0);
       OUT_RINGp (chan, &nvc0->clip.ucp[0][0], nvc0->clip.nr * 4);
-
-      BEGIN_RING(chan, RING_3D(VP_CLIP_DISTANCE_ENABLE), 1);
-      OUT_RING  (chan, (1 << nvc0->clip.nr) - 1);
-   } else {
-      IMMED_RING(chan, RING_3D(VP_CLIP_DISTANCE_ENABLE), 0);
    }
 }
 
