@@ -501,14 +501,14 @@ nvc0_program_create_tfb_state(const struct nv50_ir_prog_info *info,
          for (c = 0; c < 4; ++c) {
             if (!(pso->register_mask[i] & (1 << c)))
                continue;
-            so->varying_count[b]++;
-            so->varying_index[n++] = info->out[pso->register_index[i]].slot[c];
+            tfb->varying_count[b]++;
+            tfb->varying_index[n++] = info->out[pso->register_index[i]].slot[c];
          }
       }
-      so->stride[b] = so->varying_count[b] * 4;
+      tfb->stride[b] = tfb->varying_count[b] * 4;
    }
    if (pso->stride)
-      so->stride[0] = pso->stride;
+      tfb->stride[0] = pso->stride;
 
    return tfb;
 }

@@ -752,7 +752,7 @@ nvc0_vertex_state_bind(struct pipe_context *pipe, void *hwcso)
     nvc0->dirty |= NVC0_NEW_VERTEX;
 }
 
-struct pipe_stream_output_target *
+static struct pipe_stream_output_target *
 nvc0_so_target_create(struct pipe_context *pipe,
                       struct pipe_resource *res,
                       unsigned offset, unsigned size)
@@ -783,7 +783,7 @@ nvc0_so_target_destroy(struct pipe_context *pipe,
                        struct pipe_stream_output_target *ptarg)
 {
    struct nvc0_so_target *targ = nvc0_so_target(ptarg);
-   pipe->query_destroy(targ->pq);
+   pipe->destroy_query(pipe, targ->pq);
    FREE(targ);
 }
 
@@ -799,18 +799,18 @@ nvc0_reset_so_targets(struct pipe_context *pipe,
 }
 
 static INLINE void
-nvc0_save_so_target_state(struct nvc0_context *nvc0,
+nvc0_save_so_target_state(struct pipe_context *pipe,
                           struct pipe_stream_output_target *ptarg)
 {
    struct nvc0_so_target *targ = nvc0_so_target(ptarg);
    targ->clean = FALSE;
-   nvc0->pipe.end_query(ptarg->pq);
+   pipe->end_query(pipe, targ->pq);
 }
 
 static void
-nvc0_set_transform_feedback_targets(struct pipe_context *pipe,
-                                    unsigned num_targets,
-                                    struct pipe_stream_output_target **targets)
+nvc0_bind_transform_feedback_targets(struct pipe_context *pipe,
+				     unsigned num_targets,
+				     struct pipe_stream_output_target **targets)
 {
    struct nvc0_context *nvc0 = nvc0_context(pipe);
    unsigned i;
@@ -819,12 +819,12 @@ nvc0_set_transform_feedback_targets(struct pipe_context *pipe,
 
    for (i = 0; i < num_targets; ++i) {
       if (nvc0->tfbbuf[i])
-         nvc0_save_so_target_state(nvc0, nvc0->tfbbuf[i]);
-      pipe_stream_output_target_reference(&nvc0->tfbbuf[i], targets[i]);
+         nvc0_save_so_target_state(pipe, nvc0->tfbbuf[i]);
+      pipe_so_target_reference(&nvc0->tfbbuf[i], targets[i]);
    }
    for (; i < nvc0->num_tfbbufs; ++i) {
-      nvc0_save_so_target_state(nvc0, nvc0->tfbbuf[i]);
-      pipe_resource_reference(&nvc0->tfbbuf[i], NULL);
+      nvc0_save_so_target_state(pipe, nvc0->tfbbuf[i]);
+      pipe_so_target_reference(&nvc0->tfbbuf[i], NULL);
    }
 
    nvc0->num_tfbbufs = num_targets;
@@ -888,10 +888,10 @@ nvc0_init_state_functions(struct nvc0_context *nvc0)
    pipe->set_vertex_buffers = nvc0_set_vertex_buffers;
    pipe->set_index_buffer = nvc0_set_index_buffer;
 
-   pipe->create_stream_output_state = nvc0_tfb_state_create;
-   pipe->delete_stream_output_state = nvc0_tfb_state_delete;
-   pipe->bind_stream_output_state = nvc0_tfb_state_bind;
-   pipe->set_stream_output_buffers = nvc0_set_transform_feedback_buffers;
+   pipe->create_stream_output_target = nvc0_so_target_create;
+   pipe->stream_output_target_destroy = nvc0_so_target_destroy;
+   pipe->set_stream_output_targets = nvc0_bind_transform_feedback_targets;
+   pipe->reset_stream_output_targets = nvc0_reset_so_targets;
 
    pipe->redefine_user_buffer = u_default_redefine_user_buffer;
 }

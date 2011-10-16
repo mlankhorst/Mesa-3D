@@ -254,12 +254,12 @@ nvc0_tfb_validate(struct nvc0_context *nvc0)
       nvc0_bufctx_reset(nvc0, NVC0_BUFCTX_TFB);
 
    for (n = 0, b = 0; b < nvc0->num_tfbbufs; ++b) {
-      uint8_t idx, var[128];
+      uint8_t var[128];
       int i;
 
       if (nvc0->dirty & NVC0_NEW_TFB_TARGETS) {
-         struct nvc0_so_target *targ = nvc0->tfbbuf[b];
-         struct nv04_resource *buf = targ->pipe.buffer;
+         struct nvc0_so_target *targ = nvc0_so_target(nvc0->tfbbuf[b]);
+         struct nv04_resource *buf = nv04_resource(targ->pipe.buffer);
 
          targ->stride = tfb->stride[b];
 

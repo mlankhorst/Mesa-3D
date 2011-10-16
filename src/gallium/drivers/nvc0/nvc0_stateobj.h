@@ -54,6 +54,7 @@ struct nvc0_so_target {
    struct pipe_stream_output_target pipe;
    struct pipe_query *pq;
    unsigned stride;
+   boolean clean;
 };
 
 static INLINE struct nvc0_so_target *

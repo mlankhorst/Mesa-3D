@@ -55,7 +55,8 @@
 #define NVC0_BUFCTX_FRAME    1
 #define NVC0_BUFCTX_VERTEX   2
 #define NVC0_BUFCTX_TEXTURES 3
-#define NVC0_BUFCTX_COUNT    4
+#define NVC0_BUFCTX_TFB      4
+#define NVC0_BUFCTX_COUNT    5
 
 struct nvc0_context {
    struct nouveau_context base;
