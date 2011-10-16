@@ -388,8 +388,8 @@ nvc0_constbufs_validate(struct nvc0_context *nvc0)
 
          if (words)
             nvc0_cb_push(&nvc0->base,
-                         bo, NOUVEAU_BO_VRAM, base, res->base.width0,,
-                         words, res->data);
+                         bo, NOUVEAU_BO_VRAM, base, res->base.width0,
+                         0, words, (const uint32_t *)res->data);
       }
    }
 }
