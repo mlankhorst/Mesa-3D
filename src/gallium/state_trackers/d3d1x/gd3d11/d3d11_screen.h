@@ -1394,13 +1394,18 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 			return (GalliumD3D11Shader<>*)new GalliumD3D11GeometryShader(this, shader_cso);
 		}
 
+#ifdef D3D1X_PASS_NATIVE_SHADERS
+		void *native_shader_hack[2] = { NULL, sm4.release() };
+		((struct tgsi_header *)&native_shader_hack[0])->BodySize = sizeof(native_shader_hack);
+		tgsi_shader.tokens = native_shader_hack;
+#else
 		tgsi_shader.tokens = (const tgsi_token*)sm4_to_tgsi(*sm4);
 		if(!tgsi_shader.tokens)
 			return 0;
 
 		if(dump)
 			tgsi_dump(tgsi_shader.tokens, 0);
-
+#endif
 		GalliumD3D11Shader<>* shader;
 
 		switch(type)

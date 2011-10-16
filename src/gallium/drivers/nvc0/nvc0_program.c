@@ -549,6 +549,12 @@ nvc0_program_translate(struct nvc0_program *prog)
    info->target = 0xc0;
    info->bin.sourceRep = NV50_PROGRAM_IR_TGSI;
    info->bin.source = (void *)prog->pipe.tokens;
+#ifdef D3D1X_PASS_NATIVE_SHADERS
+   if (((struct tgsi_header *)prog->pipe.tokens)->HeaderSize == 0) {
+      info->bin.sourceRep = NV50_PROGRAM_IR_SM4;
+      info->bin.source = ((void **)prog->pipe.tokens)[1];
+   }
+#endif
 
    info->io.clipDistanceCount = prog->vp.num_ucps;
 
