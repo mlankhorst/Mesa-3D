@@ -992,7 +992,7 @@ nv50_ir_generate_code(struct nv50_ir_prog_info *info)
       ret = prog->makeFromTGSI(info) ? 0 : -2;
       break;
    }
-   if (ret < 0)
+   if (ret < 0 || !prog->main->cfg.getRoot())
       goto out;
    if (prog->dbgFlags & NV50_IR_DEBUG_VERBOSE)
       prog->print();

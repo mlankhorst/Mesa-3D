@@ -520,9 +520,7 @@ nvc0_sp_state_create(struct pipe_context *pipe,
       return NULL;
 
    prog->type = type;
-
-   if (cso->tokens)
-      prog->pipe.tokens = tgsi_dup_tokens(cso->tokens);
+   prog->pipe.tokens = tgsi_dup_tokens(cso->tokens);
 
    if (cso->stream_output.num_outputs)
       prog->pipe.stream_output = cso->stream_output;
@@ -537,7 +535,12 @@ nvc0_sp_state_delete(struct pipe_context *pipe, void *hwcso)
 
    nvc0_program_destroy(nvc0_context(pipe), prog);
 
-   FREE((void *)prog->pipe.tokens);
+#ifdef D3D1X_PASS_NATIVE_SHADERS
+   prog->pipe.tokens = NULL; /* referenced by state tracker */
+#endif
+
+   if (prog->pipe.tokens)
+      FREE((void *)prog->pipe.tokens);
    FREE(prog);
 }
 
