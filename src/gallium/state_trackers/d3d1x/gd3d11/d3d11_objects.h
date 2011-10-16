@@ -220,9 +220,17 @@ struct GalliumD3D11RasterizerState : public GalliumD3D11RasterizerStateBase
 template<typename Base = ID3D11DeviceChild>
 struct GalliumD3D11Shader : public GalliumD3D11Object<Base>
 {
+	sm4_program *sm4;
+
 	GalliumD3D11Shader(GalliumD3D11Screen* device, void* object)
-	: GalliumD3D11Object<Base>(device, object)
+	: GalliumD3D11Object<Base>(device, object), sm4(0)
 	{}
+
+	~GalliumD3D11Shader()
+	{
+		if(sm4)
+			delete sm4;
+	}
 };
 
 typedef GalliumD3D11Shader<ID3D11VertexShader> GalliumD3D11VertexShader;

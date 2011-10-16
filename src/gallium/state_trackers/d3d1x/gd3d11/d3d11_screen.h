@@ -1356,6 +1356,7 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 	{
 		bool dump = debug_get_option_dump_shaders();
 
+		sm4_program *sm4;
 		void *shader_cso;
 		struct pipe_shader_state tgsi_shader;
 		memset(&tgsi_shader, 0, sizeof(tgsi_shader));
@@ -1363,13 +1364,22 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 			memcpy(&tgsi_shader.stream_output, so_info, sizeof(tgsi_shader.stream_output));
 
 		dxbc_chunk_header* sm4_chunk = dxbc_find_shader_bytecode(shader_bytecode, bytecode_length);
-		if(!sm4_chunk)
-			return 0;
+		if(!sm4_chunk) {
+			if(!so_info)
+				return 0;
+			sm4 = new sm4_program();
+		} else {
+			sm4 = sm4_parse(sm4_chunk + 1, bswap_le32(sm4_chunk->size));
 
-		std::auto_ptr<sm4_program> sm4(sm4_parse(sm4_chunk + 1, bswap_le32(sm4_chunk->size)));
-		if(!sm4.get())
+			if(so_info && sm4->version.type != D3D11_SHVER_GEOMETRY_SHADER)
+			{
+				// don't need the code, just a place to store the signature
+				delete sm4;
+				sm4 = new sm4_program();
+			}
+		}
+		if(!sm4)
 			return 0;
-
 		if(dump)
 			sm4->dump();
 
@@ -1387,22 +1397,27 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 		if (sig)
 			sm4->num_params_patch = dxbc_parse_signature(sig, &sm4->params_patch);
 
+#ifdef D3D1X_PASS_NATIVE_SHADERS
+		void *native_shader_hack[2] = { NULL, (void*)sm4 };
+		((struct tgsi_header *)&native_shader_hack[0])->BodySize = sizeof(native_shader_hack);
+		tgsi_shader.tokens = (const struct tgsi_token*)native_shader_hack;
+#endif
+
 		if(so_info && sm4->version.type != D3D11_SHVER_GEOMETRY_SHADER)
 		{
+#ifndef D3D1X_PASS_NATIVE_SHADERS
 			tgsi_shader.tokens = (const tgsi_token*)sm4_to_tgsi_linkage_only(*sm4);
+#endif
 			shader_cso = immediate_pipe->create_gs_state(immediate_pipe, &tgsi_shader);
 			return (GalliumD3D11Shader<>*)new GalliumD3D11GeometryShader(this, shader_cso);
 		}
 
-#ifdef D3D1X_PASS_NATIVE_SHADERS
-		void *native_shader_hack[2] = { NULL, (void*)sm4.release() };
-		((struct tgsi_header *)&native_shader_hack[0])->BodySize = sizeof(native_shader_hack);
-		tgsi_shader.tokens = (const struct tgsi_token*)native_shader_hack;
-#else
+#ifndef D3D1X_PASS_NATIVE_SHADERS
 		tgsi_shader.tokens = (const struct tgsi_token*)sm4_to_tgsi(*sm4);
-		if(!tgsi_shader.tokens)
+		if(!tgsi_shader.tokens) {
+			delete sm4;
 			return 0;
-
+		}
 		if(dump)
 			tgsi_dump(tgsi_shader.tokens, 0);
 #endif
@@ -1427,8 +1442,10 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 			shader = 0;
 			break;
 		}
-
+#ifndef D3D1X_PASS_NATIVE_SHADERS
 		free((void*)tgsi_shader.tokens);
+#endif
+		shader->sm4 = sm4;
 		return shader;
 	}
 
