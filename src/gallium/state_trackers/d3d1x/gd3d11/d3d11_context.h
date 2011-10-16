@@ -1428,7 +1428,7 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 	{
 		if(unlikely(!caps.render_condition))
 			return;
-		if(!render_predicate)
+		if(!render_predicate || render_predicate_value)
 		{
 			pipe->render_condition(pipe, 0, 0);
 		}
@@ -1439,8 +1439,6 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 			unsigned mode = 0;
 			if (predicate->desc.MiscFlags & D3D11_QUERY_MISC_PREDICATEHINT)
 				mode = PIPE_RENDER_COND_NO_WAIT;
-			if (render_predicate_value)
-				mode |= PIPE_RENDER_COND_NEGATED;
 
 			pipe->render_condition(pipe, predicate->query, mode);
 		}
