@@ -400,7 +400,7 @@ struct GalliumD3D10Buffer : public GalliumD3D10BufferBase
 	~GalliumD3D10Buffer()
 	{
 		if(so_target)
-			pipe_stream_output_target_reference(&so_target, NULL);
+			pipe_so_target_reference(&so_target, NULL);
 
 		device->UnbindBuffer(this);
 	}

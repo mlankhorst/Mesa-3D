@@ -318,7 +318,7 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 			   dxgi_format == DXGI_FORMAT_R32_UINT)
 				support |= D3D11_FORMAT_SUPPORT_IA_INDEX_BUFFER;
 
-			if(screen->is_format_supported(screeen, format, PIPE_BUFFER, 0, PIPE_BIND_VERTEX_BUFFER))
+			if(screen->is_format_supported(screen, format, PIPE_BUFFER, 0, PIPE_BIND_VERTEX_BUFFER))
 				support |= D3D11_FORMAT_SUPPORT_IA_VERTEX_BUFFER;
 
                         if(screen->is_format_supported(screen, format, PIPE_BUFFER, 0, PIPE_BIND_STREAM_OUTPUT))
