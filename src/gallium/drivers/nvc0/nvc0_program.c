@@ -104,7 +104,7 @@ nvc0_vp_assign_input_slots(struct nv50_ir_prog_info *info)
    for (n = 0, i = 0; i < info->numInputs; ++i) {
       switch (info->in[i].sn) {
       case TGSI_SEMANTIC_INSTANCEID:
-      case TGSI_SEMANTIC_VERTEXID:
+      case NV50_SEMANTIC_VERTEXID:
          info->in[i].mask = 0x1;
          info->in[i].slot[0] =
             nvc0_shader_input_address(info->in[i].sn, 0, 0) / 4;
@@ -133,7 +133,7 @@ nvc0_sp_assign_input_slots(struct nv50_ir_prog_info *info)
       if (info->in[i].patch && offset >= 0x20)
          offset = 0x20 + info->in[i].si * 0x10;
 
-      if (info->in[i].sn == TGSI_SEMANTIC_TESSCOORD)
+      if (info->in[i].sn == NV50_SEMANTIC_TESSCOORD)
          info->in[i].mask &= 3;
 
       for (c = 0; c < 4; ++c)
@@ -230,7 +230,7 @@ nvc0_vtgp_gen_header(struct nvc0_program *vp, struct nv50_ir_prog_info *info)
       for (c = 0; c < 4; ++c) {
          a = info->in[i].slot[c];
          if (info->in[i].mask & (1 << c)) {
-            if (info->in[i].sn != TGSI_SEMANTIC_TESSCOORD)
+            if (info->in[i].sn != NV50_SEMANTIC_TESSCOORD)
                vp->hdr[5 + a / 32] |= 1 << (a % 32);
             else
                nvc0_vtgp_hdr_update_oread(vp, info->in[i].slot[c]);
@@ -260,11 +260,9 @@ nvc0_vtgp_gen_header(struct nvc0_program *vp, struct nv50_ir_prog_info *info)
       case TGSI_SEMANTIC_INSTANCEID:
          vp->hdr[10] |= 1 << 30;
          break;
-         /*
-      case TGSI_SEMANTIC_VERTEXID:
+      case NV50_SEMANTIC_VERTEXID:
          vp->hdr[10] |= 1 << 31;
          break;
-         */
       default:
          break;
       }
