@@ -290,7 +290,7 @@ NVC0LoweringPass::visit(Function *fn)
       bld.setPosition(BasicBlock::get(fn->cfg.getRoot()), false);
       gpEmitAddress = bld.loadImm(NULL, 0)->asLValue();
       if (fn->cfgExit) {
-         bld.setPosition(BasicBlock::get(fn->cfgExit), true);
+         bld.setPosition(BasicBlock::get(fn->cfgExit)->getExit(), false);
          bld.mkMovToReg(0, gpEmitAddress);
       }
    }
