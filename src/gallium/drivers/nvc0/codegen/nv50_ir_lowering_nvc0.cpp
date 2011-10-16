@@ -512,12 +512,14 @@ NVC0LoweringPass::handleRDSV(Instruction *i)
       bld.mkInterp(NV50_IR_INTERP_LINEAR, i->getDef(0), addr, NULL);
       break;
    case SV_FACE:
+   {
       Value *face = i->getDef(0);
       bld.mkInterp(NV50_IR_INTERP_FLAT, face, addr, NULL);
       if (i->dType == TYPE_F32) {
          bld.mkOp2(OP_AND, TYPE_U32, face, face, bld.mkImm(0x80000000));
          bld.mkOp2(OP_XOR, TYPE_U32, face, face, bld.mkImm(0xbf800000));
       }
+   }
       break;
    case SV_TESS_COORD:
       assert(prog->getType() == Program::TYPE_TESSELLATION_EVAL);
