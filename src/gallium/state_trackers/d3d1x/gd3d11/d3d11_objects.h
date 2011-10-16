@@ -368,7 +368,6 @@ typedef GalliumD3D11TypedResource<ID3D11Texture3D, D3D11_TEXTURE3D_DESC, D3D11_R
 typedef GalliumD3D11TypedResource<ID3D11Buffer, D3D11_BUFFER_DESC, D3D11_RESOURCE_DIMENSION_BUFFER> GalliumD3D11BufferBase;
 
 #if API >= 11
-typedef GalliumD3D11BufferBase GalliumD3D11Buffer;
 typedef GalliumD3D11Texture1DBase GalliumD3D11Texture1D;
 typedef GalliumD3D11Texture2DBase GalliumD3D11Texture2D;
 typedef GalliumD3D11Texture3DBase GalliumD3D11Texture3D;
@@ -385,7 +384,7 @@ struct GalliumD3D11Buffer : public GalliumD3D11BufferBase
 	~GalliumD3D11Buffer()
 	{
 		if(so_target)
-			pipe_stream_output_target_reference(&so_target, NULL);
+			pipe_so_target_reference(&so_target, NULL);
 	}
 };
 #else

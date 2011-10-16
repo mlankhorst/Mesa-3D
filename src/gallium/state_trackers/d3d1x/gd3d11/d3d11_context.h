@@ -154,8 +154,7 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 			caps.gs = false;
 			caps.stages = 2;
 		}
-		if(!pipe->set_stream_output_buffers)
-			caps.so = false;
+		assert(!caps.so || pipe->set_stream_output_targets);
 		if(!pipe->set_geometry_sampler_views)
 			caps.stages_with_sampling &=~ (1 << PIPE_SHADER_GEOMETRY);
 		if(!pipe->set_fragment_sampler_views)
@@ -752,6 +751,7 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 		info.start_instance = 0;
 		info.instance_count = 1;
 		info.primitive_restart = FALSE;
+		info.count_from_stream_output = NULL;
 
 		pipe->draw_vbo(pipe, &info);
 	}
@@ -776,6 +776,7 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 		info.instance_count = 1;
 		info.primitive_restart = TRUE;
 		info.restart_index = strip_cut_index;
+		info.count_from_stream_output = NULL;
 
 		pipe->draw_vbo(pipe, &info);
 	}
@@ -802,6 +803,7 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 		info.start_instance = start_instance_location;
 		info.instance_count = instance_count;
 		info.primitive_restart = FALSE;
+		info.count_from_stream_output = NULL;
 
 		pipe->draw_vbo(pipe, &info);
 	}
@@ -828,6 +830,7 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 		info.instance_count = instance_count;
 		info.primitive_restart = TRUE;
 		info.restart_index = strip_cut_index;
+		info.count_from_stream_output = NULL;
 
 		pipe->draw_vbo(pipe, &info);
 	}
@@ -841,7 +844,21 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 		if(update_flags)
 			update_state();
 
-		pipe->draw_stream_output(pipe, primitive_mode);
+		pipe_draw_info info;
+		info.mode = primitive_mode;
+		info.indexed = FALSE;
+		info.count = 0;
+		info.start = 0;
+		info.index_bias = 0;
+		info.min_index = 0;
+		info.max_index = ~0;
+		info.start_instance = 0;
+		info.instance_count = 1;
+		info.primitive_restart = FALSE;
+		info.restart_index = 0;
+		info.count_from_stream_output = input_buffers[0].p->so_target;
+
+		pipe->draw_vbo(pipe, &info);
 	}
 
 	virtual void STDMETHODCALLTYPE DrawIndexedInstancedIndirect(
@@ -1209,7 +1226,7 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 		if(!new_render_target_views)
 			count = 0;
 
-		for (n = 0, i = 0; i < count; ++i) {
+		for (num = 0, i = 0; i < count; ++i) {
 #if API >= 11
 			// XXX: is unbinding the UAVs here correct ?
 			om_unordered_access_views[i] = (ID3D11UnorderedAccessView*)NULL;
@@ -1333,7 +1350,7 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 			}
 			else
 			{
-				pipe_stream_output_target_reference(&buffer->so_target, NULL);
+				pipe_so_target_reference(&buffer->so_target, NULL);
 				buffer->so_target = pipe->create_stream_output_target(
 					pipe, buffer->resource, new_offsets[i], buffer->resource->width0 - new_offsets[i]);
 				so_targets[i] = buffer->so_target;
@@ -1362,9 +1379,9 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 		SYNCHRONIZED;
 		for(unsigned i = 0; i < count; ++i)
 		{
-			out_so_targets[i] = so_targets[i].ref();
+			out_so_targets[i] = so_buffers[i].ref();
 #if API < 11
-			out_offsets[i] = so_offsets[i];
+			out_offsets[i] = so_targets[i]->buffer_offset;
 #endif
 		}
 	}
@@ -1683,11 +1700,12 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 		pipe->bind_vs_state(pipe, shaders[D3D11_STAGE_VS].p ? shaders[D3D11_STAGE_VS].p->object : default_shaders[PIPE_SHADER_VERTEX]);
 		if(caps.gs)
 			pipe->bind_gs_state(pipe, shaders[D3D11_STAGE_GS].p ? shaders[D3D11_STAGE_GS].p->object : default_shaders[PIPE_SHADER_GEOMETRY]);
+		if(caps.so && num_so_targets)
+			pipe->set_stream_output_targets(pipe, num_so_targets, so_targets);
 		set_framebuffer();
 		set_viewport();
 		set_clip();
 		set_render_condition();
-		// TODO: restore stream output
 
 		update_flags |= UPDATE_VERTEX_BUFFERS | (1 << (UPDATE_SAMPLERS_SHIFT + D3D11_STAGE_PS)) | (1 << (UPDATE_VIEWS_SHIFT + D3D11_STAGE_PS));
 	}
@@ -1706,8 +1724,8 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 		GalliumD3D11ShaderResourceView* view = (GalliumD3D11ShaderResourceView*)shader_resource_view;
 		if(caps.gs)
 			pipe->bind_gs_state(pipe, 0);
-		if(caps.so)
-			pipe->bind_stream_output_state(pipe, 0);
+		if(caps.so && num_so_targets)
+			pipe->set_stream_output_targets(pipe, 0, NULL);
 		if(pipe->render_condition)
 			pipe->render_condition(pipe, 0, 0);
 		for(unsigned layer = view->object->u.tex.first_layer; layer <= view->object->u.tex.last_layer; ++layer)
@@ -1731,9 +1749,6 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 			for(unsigned i = 0; i < num; ++i)
 				pipe->set_constant_buffer(pipe, s, i, constant_buffers[s][i].p ? constant_buffers[s][i].p->resource : 0);
 		}
-
-		if(caps.so && num_so_targets)
-			pipe->set_stream_output_targets(pipe, num_so_targets, so_targets);
 
 		update_flags |= (1 << (UPDATE_SAMPLERS_SHIFT + D3D11_STAGE_VS)) | (1 << (UPDATE_VIEWS_SHIFT + D3D11_STAGE_VS));
 		update_flags |= (1 << (UPDATE_SAMPLERS_SHIFT + D3D11_STAGE_GS)) | (1 << (UPDATE_VIEWS_SHIFT + D3D11_STAGE_GS));

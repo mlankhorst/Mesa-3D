@@ -1504,13 +1504,13 @@ struct GalliumD3D11ScreenImpl : public GalliumD3D11Screen
 		if (rasterized_stream != 0)
 			return E_NOTIMPL; // not yet supported by gallium
 #endif
-		struct dxbc_chunk_signature* sig = dxbc_find_signature(shader_bytecode, bytecode_length, true, false);
+		struct dxbc_chunk_signature* sig = dxbc_find_signature(shader_bytecode, bytecode_length, DXBC_FIND_OUTPUT_SIGNATURE);
 		if (!sig)
 			return E_INVALIDARG;
 		D3D11_SIGNATURE_PARAMETER_DESC* out;
 		unsigned num_outputs = dxbc_parse_signature(sig, &out);
 
-		struct pipe_stream_output_state so;
+		struct pipe_stream_output_info so;
 		memset(&so, 0, sizeof(so));
 
 #if API >= 11

@@ -24,6 +24,7 @@
  *
  **************************************************************************/
 
+#include <d3d11shader.h>
 #include "d3d1xstutil.h"
 #include "sm4.h"
 #include "tgsi/tgsi_ureg.h"
@@ -805,20 +806,20 @@ void* sm4_to_tgsi(struct sm4_program& program)
 	return conv.translate();
 }
 
-void* sm4_to_tgsi_linkage_only(struct sm4_program& program)
+void* sm4_to_tgsi_linkage_only(struct sm4_program& prog)
 {
 	struct ureg_program* ureg = ureg_create(TGSI_PROCESSOR_GEOMETRY);
 
 	uint64_t already = 0;
-	for(unsigned n = 0, i = 0; i < program.num_params_out; ++i)
+	for(unsigned n = 0, i = 0; i < prog.num_params_out; ++i)
 	{
 		unsigned sn, si;
 
-		if(already & (1ULL << sm4.params_out[i].Register))
+		if(already & (1ULL << prog.params_out[i].Register))
 			continue;
-		already |= 1ULL << sm4.params_out[i].Register;
+		already |= 1ULL << prog.params_out[i].Register;
 
-		switch(sm4.params_out[i].SystemValueType)
+		switch(prog.params_out[i].SystemValueType)
 		{
 		case D3D_NAME_UNDEFINED:
 			sn = TGSI_SEMANTIC_GENERIC;
@@ -828,7 +829,7 @@ void* sm4_to_tgsi_linkage_only(struct sm4_program& program)
 		case D3D_NAME_CLIP_DISTANCE:
 			// FIXME
 			sn = 0;
-			si = sm4.params_out[i].SemanticIndex;
+			si = prog.params_out[i].SemanticIndex;
 			assert(0);
 			break;
 		default:
