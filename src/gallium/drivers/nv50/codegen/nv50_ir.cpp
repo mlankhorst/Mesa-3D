@@ -979,15 +979,15 @@ nv50_ir_generate_code(struct nv50_ir_prog_info *info)
    prog->dbgFlags = info->dbgFlags;
 
    switch (info->bin.sourceRep) {
+   case NV50_PROGRAM_IR_SM4:
+      ret = prog->makeFromSM4(info) ? 0 : -2;
+      break;
 #if 0
    case PIPE_IR_LLVM:
    case PIPE_IR_GLSL:
       return -1;
-   case PIPE_IR_SM4:
-      ret = prog->makeFromSM4(info) ? 0 : -2;
-      break;
-   case PIPE_IR_TGSI:
 #endif
+   case NV50_PROGRAM_IR_TGSI:
    default:
       ret = prog->makeFromTGSI(info) ? 0 : -2;
       break;
