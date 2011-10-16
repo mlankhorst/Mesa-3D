@@ -1955,7 +1955,7 @@ Converter::handleInstruction(unsigned int pos)
    case SM4_OPCODE_DISCARD:
       info.prop.fp.usesDiscard = TRUE;
       mkOp(OP_DISCARD, TYPE_NONE, NULL)->setPredicate(
-         insn->insn.test_nz ? CC_NOT_P : CC_P, src(0, 0));
+         insn->insn.test_nz ? CC_P : CC_NOT_P, src(0, 0));
       break;
 
    case SM4_OPCODE_CALL:
@@ -2258,6 +2258,9 @@ Converter::run()
       handleDeclaration(*sm4.dcls[pos]);
 
    info.assignSlots(&info);
+
+   if (sm4.dcls.size() == 0 && sm4.insns.size() == 0)
+      return true;
 
    BasicBlock *entry = new BasicBlock(prog->main);
    BasicBlock *leave = new BasicBlock(prog->main);
