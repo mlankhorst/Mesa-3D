@@ -14,15 +14,15 @@ static nv50_ir::SVSemantic irSemantic(unsigned sn)
    switch (sn) {
    case TGSI_SEMANTIC_POSITION:      return nv50_ir::SV_POSITION;
    case TGSI_SEMANTIC_FACE:          return nv50_ir::SV_FACE;
-   case TGSI_SEMANTIC_LAYER:         return nv50_ir::SV_LAYER;
-   case TGSI_SEMANTIC_VIEWPORTINDEX: return nv50_ir::SV_VIEWPORT_INDEX;
+   case NV50_SEMANTIC_LAYER:         return nv50_ir::SV_LAYER;
+   case NV50_SEMANTIC_VIEWPORTINDEX: return nv50_ir::SV_VIEWPORT_INDEX;
    case TGSI_SEMANTIC_PSIZE:         return nv50_ir::SV_POINT_SIZE;
-   case TGSI_SEMANTIC_CLIPDISTANCE:  return nv50_ir::SV_CLIP_DISTANCE;
-   case TGSI_SEMANTIC_VERTEXID:      return nv50_ir::SV_VERTEX_ID;
+   case NV50_SEMANTIC_CLIPDISTANCE:  return nv50_ir::SV_CLIP_DISTANCE;
+   case NV50_SEMANTIC_VERTEXID:      return nv50_ir::SV_VERTEX_ID;
    case TGSI_SEMANTIC_INSTANCEID:    return nv50_ir::SV_INSTANCE_ID;
    case TGSI_SEMANTIC_PRIMID:        return nv50_ir::SV_PRIMITIVE_ID;
-   case TGSI_SEMANTIC_TESSFACTOR:    return nv50_ir::SV_TESS_FACTOR;
-   case TGSI_SEMANTIC_TESSCOORD:     return nv50_ir::SV_TESS_COORD;
+   case NV50_SEMANTIC_TESSFACTOR:    return nv50_ir::SV_TESS_FACTOR;
+   case NV50_SEMANTIC_TESSCOORD:     return nv50_ir::SV_TESS_COORD;
    default:
       return nv50_ir::SV_UNDEFINED;
    }
@@ -184,7 +184,7 @@ Converter::g3dPrim(const unsigned prim, unsigned *patchSize) const
       if (patchSize)
          *patchSize =
             prim - D3D_PRIMITIVE_TOPOLOGY_1_CONTROL_POINT_PATCHLIST + 1;
-      return PIPE_PRIM_PATCHES;
+      return NV50_PRIM_PATCHES;
    }
 }
 
@@ -648,16 +648,16 @@ Converter::tgsiSemantic(SVSemantic sv, int index)
    switch (sv) {
    case SV_POSITION:       return TGSI_SEMANTIC_POSITION;
    case SV_FACE:           return TGSI_SEMANTIC_FACE;
-   case SV_LAYER:          return TGSI_SEMANTIC_LAYER;
-   case SV_VIEWPORT_INDEX: return TGSI_SEMANTIC_VIEWPORTINDEX;
+   case SV_LAYER:          return NV50_SEMANTIC_LAYER;
+   case SV_VIEWPORT_INDEX: return NV50_SEMANTIC_VIEWPORTINDEX;
    case SV_POINT_SIZE:     return TGSI_SEMANTIC_PSIZE;
-   case SV_CLIP_DISTANCE:  return TGSI_SEMANTIC_CLIPDISTANCE;
-   case SV_VERTEX_ID:      return TGSI_SEMANTIC_VERTEXID;
+   case SV_CLIP_DISTANCE:  return NV50_SEMANTIC_CLIPDISTANCE;
+   case SV_VERTEX_ID:      return NV50_SEMANTIC_VERTEXID;
    case SV_INSTANCE_ID:    return TGSI_SEMANTIC_INSTANCEID;
    case SV_PRIMITIVE_ID:   return TGSI_SEMANTIC_PRIMID;
-   case SV_TESS_FACTOR:    return TGSI_SEMANTIC_TESSFACTOR;
-   case SV_TESS_COORD:     return TGSI_SEMANTIC_TESSCOORD;
-   case SV_INVOCATION_ID:  return TGSI_SEMANTIC_INVOCATIONID;
+   case SV_TESS_FACTOR:    return NV50_SEMANTIC_TESSFACTOR;
+   case SV_TESS_COORD:     return NV50_SEMANTIC_TESSCOORD;
+   case SV_INVOCATION_ID:  return NV50_SEMANTIC_INVOCATIONID;
    default:
       return TGSI_SEMANTIC_GENERIC;
    }
@@ -688,7 +688,7 @@ Converter::parseSignature()
    info.numOutputs = 0;
    info.numPatchConstants = 0;
 
-   for (n = 0, i = 0; i < sm4.params_in_num; ++i) {
+   for (n = 0, i = 0; i < sm4.num_params_in; ++i) {
       r = sm4.params_in[i].Register;
 
       info.in[r].mask |= sm4.params_in[i].ReadWriteMask;
@@ -712,7 +712,7 @@ Converter::parseSignature()
          info.in[r].sn = TGSI_SEMANTIC_POSITION;
          break;
       case D3D_NAME_VERTEX_ID:
-         info.in[r].sn = TGSI_SEMANTIC_VERTEXID;
+         info.in[r].sn = NV50_SEMANTIC_VERTEXID;
          break;
       case D3D_NAME_PRIMITIVE_ID:
          info.in[r].sn = TGSI_SEMANTIC_PRIMID;
@@ -733,7 +733,7 @@ Converter::parseSignature()
       }
    }
 
-   for (n = 0, i = 0; i < sm4.params_out_num; ++i) {
+   for (n = 0, i = 0; i < sm4.num_params_out; ++i) {
       r = sm4.params_out[i].Register;
 
       info.out[r].mask |= ~sm4.params_out[i].ReadWriteMask;
@@ -764,14 +764,14 @@ Converter::parseSignature()
          break;
       case D3D_NAME_CULL_DISTANCE:
       case D3D_NAME_CLIP_DISTANCE:
-         info.out[r].sn = TGSI_SEMANTIC_CLIPDISTANCE;
+         info.out[r].sn = NV50_SEMANTIC_CLIPDISTANCE;
          info.out[r].si = sm4.params_out[i].SemanticIndex;
          break;
       case D3D_NAME_RENDER_TARGET_ARRAY_INDEX:
-         info.out[r].sn = TGSI_SEMANTIC_LAYER;
+         info.out[r].sn = NV50_SEMANTIC_LAYER;
          break;
       case D3D_NAME_VIEWPORT_ARRAY_INDEX:
-         info.out[r].sn = TGSI_SEMANTIC_VIEWPORTINDEX;
+         info.out[r].sn = NV50_SEMANTIC_VIEWPORTINDEX;
          break;
       case D3D_NAME_PRIMITIVE_ID:
          info.out[r].sn = TGSI_SEMANTIC_PRIMID;
@@ -781,7 +781,7 @@ Converter::parseSignature()
          info.out[r].si = sm4.params_out[i].SemanticIndex;
          break;
       case D3D_NAME_COVERAGE:
-         info.out[r].sn = TGSI_SEMANTIC_SAMPLEMASK;
+         info.out[r].sn = NV50_SEMANTIC_SAMPLEMASK;
          info.io.sampleMask = r;
          break;
       case D3D_NAME_SAMPLE_INDEX:
@@ -796,7 +796,7 @@ Converter::parseSignature()
    else
       patch = &info.out[info.numOutputs];
 
-   for (n = 0, i = 0; i < sm4.params_patch_num; ++i) {
+   for (n = 0, i = 0; i < sm4.num_params_patch; ++i) {
       r = sm4.params_patch[i].Register;
 
       patch[r].mask |= sm4.params_patch[i].Mask;
@@ -816,13 +816,13 @@ Converter::parseSignature()
       case D3D_NAME_FINAL_QUAD_EDGE_TESSFACTOR:
       case D3D_NAME_FINAL_TRI_EDGE_TESSFACTOR:
       case D3D_NAME_FINAL_LINE_DETAIL_TESSFACTOR:
-         patch[r].sn = TGSI_SEMANTIC_TESSFACTOR;
+         patch[r].sn = NV50_SEMANTIC_TESSFACTOR;
          patch[r].si = sm4.params_patch[i].SemanticIndex;
          break;
       case D3D_NAME_FINAL_QUAD_INSIDE_TESSFACTOR:
       case D3D_NAME_FINAL_TRI_INSIDE_TESSFACTOR:
       case D3D_NAME_FINAL_LINE_DENSITY_TESSFACTOR:
-         patch[r].sn = TGSI_SEMANTIC_TESSFACTOR;
+         patch[r].sn = NV50_SEMANTIC_TESSFACTOR;
          patch[r].si = sm4.params_patch[i].SemanticIndex + 4;
          break;
       default:
@@ -887,7 +887,7 @@ Converter::inspectDeclaration(const sm4_dcl& dcl)
    case SM4_OPCODE_DCL_INPUT:
       if (dcl.op->file == SM4_FILE_INPUT_DOMAIN_POINT) {
          idx = info.numInputs++;
-         info.in[idx].sn = TGSI_SEMANTIC_TESSCOORD;
+         info.in[idx].sn = NV50_SEMANTIC_TESSCOORD;
          info.in[idx].mask = dcl.op->mask;
       }
       // rest handled in parseSignature
@@ -920,7 +920,7 @@ Converter::inspectDeclaration(const sm4_dcl& dcl)
          if (info.io.sampleMask < 0xff)
             break;
          idx = info.io.sampleMask = info.numOutputs++;
-         info.out[idx].sn = TGSI_SEMANTIC_SAMPLEMASK;
+         info.out[idx].sn = NV50_SEMANTIC_SAMPLEMASK;
          break;
       default:
          break;
@@ -993,18 +993,18 @@ Converter::inspectDeclaration(const sm4_dcl& dcl)
    case SM4_OPCODE_DCL_TESS_PARTITIONING:
       switch (dcl.dcl_tess_partitioning.partitioning) {
       case D3D_TESSELLATOR_PARTITIONING_FRACTIONAL_ODD:
-         info.prop.tp.partitioning = PIPE_TESS_PART_FRACT_ODD;
+         info.prop.tp.partitioning = NV50_TESS_PART_FRACT_ODD;
          break;
       case D3D_TESSELLATOR_PARTITIONING_FRACTIONAL_EVEN:
-         info.prop.tp.partitioning = PIPE_TESS_PART_FRACT_EVEN;
+         info.prop.tp.partitioning = NV50_TESS_PART_FRACT_EVEN;
          break;
       case D3D_TESSELLATOR_PARTITIONING_POW2:
-         info.prop.tp.partitioning = PIPE_TESS_PART_POW2;
+         info.prop.tp.partitioning = NV50_TESS_PART_POW2;
          break;
       case D3D_TESSELLATOR_PARTITIONING_INTEGER:
       case D3D_TESSELLATOR_PARTITIONING_UNDEFINED:
       default:
-         info.prop.tp.partitioning = PIPE_TESS_PART_INTEGER;
+         info.prop.tp.partitioning = NV50_TESS_PART_INTEGER;
          break;
       }
       break;
@@ -1311,7 +1311,7 @@ Converter::src(const sm4_op& op, int c, int s)
       break;
    case SM4_FILE_INPUT_GS_INSTANCE_ID:
    case SM4_FILE_OUTPUT_CONTROL_POINT_ID:
-      recordSV(TGSI_SEMANTIC_INVOCATIONID, 0, 1, true);
+      recordSV(NV50_SEMANTIC_INVOCATIONID, 0, 1, true);
       res = mkOp1v(OP_RDSV, TYPE_U32, getSSA(), mkSysVal(SV_INVOCATION_ID, 0));
       break;
    case SM4_FILE_CYCLE_COUNTER:
@@ -1435,7 +1435,7 @@ Converter::saveDst(const sm4_op &op, int c, Value *value, int s)
       } else {
          if (phase)
             idx += info.numOutputs - info.numPatchConstants;
-         const int shl = (info.out[idx].sn == TGSI_SEMANTIC_TESSFACTOR) ? 2 : 4;
+         const int shl = (info.out[idx].sn == NV50_SEMANTIC_TESSFACTOR) ? 2 : 4;
          sym = oSym(idx, c);
          if (sym->reg.file == FILE_SHADER_OUTPUT)
             st = mkStore(OP_EXPORT, dTy, sym, getDstPtr(s, 0, shl), value);
