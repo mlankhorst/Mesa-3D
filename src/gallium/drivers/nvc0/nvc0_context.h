@@ -126,7 +126,6 @@ struct nvc0_context {
 
    boolean vbo_push_hint;
 
-   struct nvc0_transform_feedback_state *tfb_state;
    struct pipe_stream_output_target *tfbbuf[4];
    unsigned num_tfbbufs;
 

@@ -718,11 +718,8 @@ nvc0_program_destroy(struct nvc0_context *nvc0, struct nvc0_program *prog)
       FREE(prog->immd_data);
    if (prog->relocs)
       FREE(prog->relocs);
-   if (prog->tfb) {
-      if (nvc0->tfb_state)
-         nvc0->tfb_state = NULL;
+   if (prog->tfb)
       FREE(prog->tfb);
-   }
 
    memset(prog->hdr, 0, sizeof(prog->hdr));
 

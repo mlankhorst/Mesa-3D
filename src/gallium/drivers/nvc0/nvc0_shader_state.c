@@ -275,7 +275,7 @@ nvc0_tfb_validate(struct nvc0_context *nvc0)
 
          nvc0_bufctx_add_resident(nvc0, NVC0_BUFCTX_TFB, buf, NOUVEAU_BO_WR);
       }
-      if (nvc0->tfb_state == tfb || unlikely(!tfb))
+      if (unlikely(!tfb))
          continue;
 
       BEGIN_RING(chan, RING_3D(TFB_STREAM(b)), 3);
@@ -295,7 +295,4 @@ nvc0_tfb_validate(struct nvc0_context *nvc0)
    if (tfb && nvc0->num_tfbbufs) /* otherwise updated when re-enabled */
       for (; b < 4; ++b)
          IMMED_RING(chan, RING_3D(TFB_BUFFER_ENABLE(b)), 0);
-
-   if (tfb)
-      nvc0->tfb_state = tfb;
 }
