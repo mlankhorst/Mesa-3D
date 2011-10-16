@@ -1332,11 +1332,11 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 			{
 				changed = true;
 				so_buffers[i] = buffer;
-				so_targets[i] = buffer->so_target;
+				so_targets[i] = buffer ? buffer->so_target : 0;
 			}
-			if(!so_buffers[i])
+			if(!buffer)
 				continue;
-			new_count = i;
+			new_count = i + 1;
 
 			if(new_offsets[i] == (unsigned)-1)
 			{
