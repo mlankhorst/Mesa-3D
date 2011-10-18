@@ -58,7 +58,7 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 	refcnt_ptr<GalliumD3D11SamplerState, PtrTraits> samplers[D3D11_STAGES][D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT];
 	refcnt_ptr<GalliumD3D11Buffer, PtrTraits> input_buffers[D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT];
 	refcnt_ptr<GalliumD3D11RenderTargetView, PtrTraits> render_target_views[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT];
-	refcnt_ptr<GalliumD3D11Buffer, PtrTraits> so_targets[D3D11_SO_BUFFER_SLOT_COUNT];
+	refcnt_ptr<GalliumD3D11Buffer, PtrTraits> so_buffers[D3D11_SO_BUFFER_SLOT_COUNT];
 
 #if API >= 11
 	refcnt_ptr<ID3D11UnorderedAccessView, PtrTraits> cs_unordered_access_views[D3D11_PS_CS_UAV_REGISTER_COUNT];
@@ -67,7 +67,6 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 
 	D3D11_VIEWPORT viewports[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE];
 	D3D11_RECT scissor_rects[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE];
-	unsigned so_offsets[D3D11_SO_BUFFER_SLOT_COUNT];
 	D3D11_PRIMITIVE_TOPOLOGY primitive_topology;
 	DXGI_FORMAT index_format;
 	unsigned index_offset;
@@ -89,14 +88,13 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 	// derived state
 	int primitive_mode;
 	struct pipe_vertex_buffer vertex_buffers[D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT];
-	struct pipe_resource* so_buffers[D3D11_SO_BUFFER_SLOT_COUNT];
+	struct pipe_stream_output_target* so_targets[D3D11_SO_BUFFER_SLOT_COUNT];
 	struct pipe_sampler_view* sampler_views[D3D11_STAGES][D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT];
 	struct
 	{
 		void* ld; // accessed with a -1 index from v
 		void* v[D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT];
 	} sampler_csos[D3D11_STAGES];
-	struct pipe_resource * buffers[D3D11_SO_BUFFER_SLOT_COUNT];
 	unsigned num_shader_resource_views[D3D11_STAGES];
 	unsigned num_samplers[D3D11_STAGES];
 	unsigned num_vertex_buffers;
@@ -155,8 +153,7 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 			caps.gs = false;
 			caps.stages = 2;
 		}
-		if(!pipe->set_stream_output_buffers)
-			caps.so = false;
+		assert(!caps.so || pipe->set_stream_output_targets);
 		if(!pipe->set_geometry_sampler_views)
 			caps.stages_with_sampling &=~ (1 << PIPE_SHADER_GEOMETRY);
 		if(!pipe->set_fragment_sampler_views)
@@ -169,7 +166,6 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 		// pipeline state
 		memset(viewports, 0, sizeof(viewports));
 		memset(scissor_rects, 0, sizeof(scissor_rects));
-		memset(so_offsets, 0, sizeof(so_offsets));
 		primitive_topology = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED;
 		index_format = DXGI_FORMAT_UNKNOWN;
 		index_offset = 0;
@@ -183,7 +179,7 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 		// derived state
 		primitive_mode = 0;
 		memset(vertex_buffers, 0, sizeof(vertex_buffers));
-		memset(so_buffers, 0, sizeof(so_buffers));
+		memset(so_targets, 0, sizeof(so_buffers));
 		memset(sampler_views, 0, sizeof(sampler_views));
 		memset(sampler_csos, 0, sizeof(sampler_csos));
 		memset(num_shader_resource_views, 0, sizeof(num_shader_resource_views));
@@ -753,6 +749,7 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 		info.start_instance = 0;
 		info.instance_count = 1;
 		info.primitive_restart = FALSE;
+		info.count_from_stream_output = NULL;
 
 		pipe->draw_vbo(pipe, &info);
 	}
@@ -777,6 +774,7 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 		info.instance_count = 1;
 		info.primitive_restart = TRUE;
 		info.restart_index = strip_cut_index;
+		info.count_from_stream_output = NULL;
 
 		pipe->draw_vbo(pipe, &info);
 	}
@@ -803,6 +801,7 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 		info.start_instance = start_instance_location;
 		info.instance_count = instance_count;
 		info.primitive_restart = FALSE;
+		info.count_from_stream_output = NULL;
 
 		pipe->draw_vbo(pipe, &info);
 	}
@@ -829,6 +828,7 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 		info.instance_count = instance_count;
 		info.primitive_restart = TRUE;
 		info.restart_index = strip_cut_index;
+		info.count_from_stream_output = NULL;
 
 		pipe->draw_vbo(pipe, &info);
 	}
@@ -842,7 +842,21 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 		if(update_flags)
 			update_state();
 
-		pipe->draw_stream_output(pipe, primitive_mode);
+		pipe_draw_info info;
+		info.mode = primitive_mode;
+		info.indexed = FALSE;
+		info.count = 0;
+		info.start = 0;
+		info.index_bias = 0;
+		info.min_index = 0;
+		info.max_index = ~0;
+		info.start_instance = 0;
+		info.instance_count = 1;
+		info.primitive_restart = FALSE;
+		info.restart_index = 0;
+		info.count_from_stream_output = input_buffers[0].p->so_target;
+
+		pipe->draw_vbo(pipe, &info);
 	}
 
 	virtual void STDMETHODCALLTYPE DrawIndexedInstancedIndirect(
@@ -873,6 +887,7 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 		info.start_instance = 0;
 		info.instance_count = data.instance_count;
 		info.primitive_restart = FALSE;
+		info.count_from_stream_output = NULL;
 
 		pipe->draw_vbo(pipe, &info);
 	}
@@ -905,6 +920,7 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 		info.instance_count = data.instance_count;
 		info.primitive_restart = TRUE;
 		info.restart_index = strip_cut_index;
+		info.count_from_stream_output = NULL;
 
 		pipe->draw_vbo(pipe, &info);
 	}
@@ -1303,34 +1319,53 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 		const unsigned *new_offsets)
 	{
 		SYNCHRONIZED;
-		unsigned i;
+
+		bool changed = false;
+		unsigned new_count, i;
 		if(!new_so_targets)
 			count = 0;
-		bool changed = false;
-		for(i = 0; i < count; ++i)
+		for(new_count = 0, i = 0; i < count; ++i)
 		{
-			ID3D11Buffer* buffer = new_so_targets[i];
-			if(buffer != so_targets[i].p || new_offsets[i] != so_offsets[i])
-			{
-				so_buffers[i] = buffer ? ((GalliumD3D11Buffer*)buffer)->resource : 0;
-				so_targets[i] = buffer;
-				so_offsets[i] = new_offsets[i];
-				changed = true;
-			}
-		}
-		for(; i < D3D11_SO_BUFFER_SLOT_COUNT; ++i)
-		{
-			if(so_targets[i].p || so_offsets[i])
-			{
-				changed = true;
-				so_targets[i] = (ID3D11Buffer*)0;
-				so_offsets[i] = 0;
-			}
-		}
-		num_so_targets = count;
+			GalliumD3D11Buffer* buffer = static_cast<GalliumD3D11Buffer*>(new_so_targets[i]);
 
-		if(changed && caps.so)
-			pipe->set_stream_output_buffers(pipe, so_buffers, (int*)so_offsets, num_so_targets);
+			if(buffer != so_buffers[i].p)
+			{
+				changed = true;
+				so_buffers[i] = buffer;
+				so_targets[i] = buffer ? buffer->so_target : 0;
+			}
+			if(!buffer)
+				continue;
+			new_count = i + 1;
+
+			if(new_offsets[i] == (unsigned)-1)
+			{
+				assert(so_targets[i]);
+				continue;
+			}
+
+			if(so_targets[i] && new_offsets[i] == so_targets[i]->buffer_offset)
+			{
+				pipe->reset_stream_output_targets(pipe, 1, &so_targets[i]);
+			}
+			else
+			{
+				pipe_so_target_reference(&buffer->so_target, NULL);
+				buffer->so_target = pipe->create_stream_output_target(
+					pipe, buffer->resource, new_offsets[i], buffer->resource->width0 - new_offsets[i]);
+				so_targets[i] = buffer->so_target;
+				changed = true;
+			}
+		}
+		if (i < num_so_targets) {
+			changed = true;
+			for(; i < num_so_targets; ++i)
+				so_buffers[i] = (GalliumD3D11Buffer*)0;
+		}
+		num_so_targets = new_count;
+
+		if(likely(caps.so) && changed)
+			pipe->set_stream_output_targets(pipe, num_so_targets, so_targets);
 	}
 
 	virtual void STDMETHODCALLTYPE SOGetTargets(
@@ -1344,9 +1379,9 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 		SYNCHRONIZED;
 		for(unsigned i = 0; i < count; ++i)
 		{
-			out_so_targets[i] = so_targets[i].ref();
+			out_so_targets[i] = so_buffers[i].ref();
 #if API < 11
-			out_offsets[i] = so_offsets[i];
+			out_offsets[i] = so_targets[i]->buffer_offset;
 #endif
 		}
 	}
@@ -1660,11 +1695,12 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 		pipe->bind_vs_state(pipe, shaders[D3D11_STAGE_VS].p ? shaders[D3D11_STAGE_VS].p->object : default_shaders[PIPE_SHADER_VERTEX]);
 		if(caps.gs)
 			pipe->bind_gs_state(pipe, shaders[D3D11_STAGE_GS].p ? shaders[D3D11_STAGE_GS].p->object : default_shaders[PIPE_SHADER_GEOMETRY]);
+		if(caps.so && num_so_targets)
+			pipe->set_stream_output_targets(pipe, num_so_targets, so_targets);
 		set_framebuffer();
 		set_viewport();
 		set_clip();
 		set_render_condition();
-		// TODO: restore stream output
 
 		update_flags |= UPDATE_VERTEX_BUFFERS | (1 << (UPDATE_SAMPLERS_SHIFT + D3D11_STAGE_PS)) | (1 << (UPDATE_VIEWS_SHIFT + D3D11_STAGE_PS));
 	}
@@ -1683,8 +1719,8 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 		GalliumD3D11ShaderResourceView* view = (GalliumD3D11ShaderResourceView*)shader_resource_view;
 		if(caps.gs)
 			pipe->bind_gs_state(pipe, 0);
-		if(caps.so)
-			pipe->bind_stream_output_state(pipe, 0);
+		if(caps.so && num_so_targets)
+			pipe->set_stream_output_targets(pipe, 0, NULL);
 		if(pipe->render_condition)
 			pipe->render_condition(pipe, 0, 0);
 		for(unsigned layer = view->object->u.tex.first_layer; layer <= view->object->u.tex.last_layer; ++layer)
@@ -1708,9 +1744,6 @@ struct GalliumD3D10Device : public GalliumD3D10ScreenImpl<threadsafe>
 			for(unsigned i = 0; i < num; ++i)
 				pipe->set_constant_buffer(pipe, s, i, constant_buffers[s][i].p ? constant_buffers[s][i].p->resource : 0);
 		}
-
-		if(caps.so)
-			pipe->set_stream_output_buffers(pipe, so_buffers, (int*)so_offsets, num_so_targets);
 
 		update_flags |= (1 << (UPDATE_SAMPLERS_SHIFT + D3D11_STAGE_VS)) | (1 << (UPDATE_VIEWS_SHIFT + D3D11_STAGE_VS));
 		update_flags |= (1 << (UPDATE_SAMPLERS_SHIFT + D3D11_STAGE_GS)) | (1 << (UPDATE_VIEWS_SHIFT + D3D11_STAGE_GS));
