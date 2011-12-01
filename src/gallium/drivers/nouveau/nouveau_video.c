@@ -668,6 +668,11 @@ nouveau_video_buffer_sampler_view_planes(struct pipe_video_buffer *buffer)
 
          if (util_format_get_nr_components(buf->resources[i]->format) == 1)
             sv_templ.swizzle_r = sv_templ.swizzle_g = sv_templ.swizzle_b = sv_templ.swizzle_a = PIPE_SWIZZLE_RED;
+         else {
+            sv_templ.swizzle_b = sv_templ.swizzle_g;
+            sv_templ.swizzle_g = sv_templ.swizzle_r;
+            assert(i == 1);
+         }
 
          buf->sampler_view_planes[i] = pipe->create_sampler_view(pipe, buf->resources[i], &sv_templ);
          if (!buf->sampler_view_planes[i])
@@ -680,45 +685,6 @@ nouveau_video_buffer_sampler_view_planes(struct pipe_video_buffer *buffer)
 error:
    for (i = 0; i < buf->num_planes; ++i )
       pipe_sampler_view_reference(&buf->sampler_view_planes[i], NULL);
-
-   return NULL;
-}
-
-static struct pipe_sampler_view **
-nouveau_video_buffer_sampler_view_components(struct pipe_video_buffer *buffer)
-{
-   struct nouveau_video_buffer *buf = (struct nouveau_video_buffer *)buffer;
-   struct pipe_sampler_view sv_templ;
-   struct pipe_context *pipe;
-   unsigned i, j, component;
-
-   assert(buf);
-
-   pipe = buf->base.context;
-
-   for (component = 0, i = 0; i < buf->num_planes; ++i ) {
-      unsigned nr_components = util_format_get_nr_components(buf->resources[i]->format);
-
-      for (j = 0; j < nr_components; ++j, ++component) {
-         assert(component < VL_MAX_PLANES);
-
-         if (!buf->sampler_view_components[component]) {
-            memset(&sv_templ, 0, sizeof(sv_templ));
-            u_sampler_view_default_template(&sv_templ, buf->resources[i], buf->resources[i]->format);
-            sv_templ.swizzle_r = sv_templ.swizzle_g = sv_templ.swizzle_b = PIPE_SWIZZLE_RED + j;
-            sv_templ.swizzle_a = PIPE_SWIZZLE_ONE;
-            buf->sampler_view_components[component] = pipe->create_sampler_view(pipe, buf->resources[i], &sv_templ);
-            if (!buf->sampler_view_components[component])
-               goto error;
-         }
-      }
-   }
-
-   return buf->sampler_view_components;
-
-error:
-   for (i = 0; i < 3; ++i )
-      pipe_sampler_view_reference(&buf->sampler_view_components[i], NULL);
 
    return NULL;
 }
@@ -766,11 +732,8 @@ nouveau_video_buffer_destroy(struct pipe_video_buffer *buffer)
    for (i = 0; i < buf->num_planes; ++i) {
       pipe_surface_reference(&buf->surfaces[i], NULL);
       pipe_sampler_view_reference(&buf->sampler_view_planes[i], NULL);
-      pipe_sampler_view_reference(&buf->sampler_view_components[i], NULL);
       pipe_resource_reference(&buf->resources[i], NULL);
    }
-   for (;i < 3;++i)
-      pipe_sampler_view_reference(&buf->sampler_view_components[i], NULL);
 
    FREE(buffer);
 }
@@ -804,7 +767,6 @@ nouveau_video_buffer_create(struct pipe_context *pipe,
    buffer->base.context = pipe;
    buffer->base.destroy = nouveau_video_buffer_destroy;
    buffer->base.get_sampler_view_planes = nouveau_video_buffer_sampler_view_planes;
-   buffer->base.get_sampler_view_components = nouveau_video_buffer_sampler_view_components;
    buffer->base.get_surfaces = nouveau_video_buffer_surfaces;
    buffer->base.chroma_format = chroma_format;
    buffer->base.width = width;

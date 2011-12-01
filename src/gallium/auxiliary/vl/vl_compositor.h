@@ -76,7 +76,7 @@ struct vl_compositor
    void *vertex_elems_state;
 
    void *vs;
-   void *fs_video_buffer;
+   void *fs_video_buffer2, *fs_video_buffer3;
    void *fs_rgba;
 
    struct {

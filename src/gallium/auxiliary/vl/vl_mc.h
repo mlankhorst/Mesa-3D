@@ -53,7 +53,7 @@ struct vl_mc
    void *blend_add[VL_MC_NUM_BLENDERS];
    void *blend_sub[VL_MC_NUM_BLENDERS];
    void *vs_ref, *vs_ycbcr;
-   void *fs_ref, *fs_ycbcr, *fs_ycbcr_sub;
+   void *fs_ref, *fs_ref_cbcr, *fs_ycbcr, *fs_ycbcr_sub;
    void *sampler_ref;
 };
 
@@ -92,7 +92,7 @@ void vl_mc_cleanup_buffer(struct vl_mc_buffer *buffer);
 
 void vl_mc_set_surface(struct vl_mc_buffer *buffer, struct pipe_surface *surface);
 
-void vl_mc_render_ref(struct vl_mc_buffer *buffer, struct pipe_sampler_view *ref);
+void vl_mc_render_ref(struct vl_mc_buffer *buffer, struct pipe_sampler_view *ref, unsigned plane);
 
 void vl_mc_render_ycbcr(struct vl_mc_buffer *buffer, unsigned component, unsigned num_instances);
 

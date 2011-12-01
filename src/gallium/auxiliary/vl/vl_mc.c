@@ -31,6 +31,7 @@
 
 #include "util/u_sampler.h"
 #include "util/u_draw.h"
+#include "util/u_format.h"
 
 #include "tgsi/tgsi_ureg.h"
 
@@ -153,7 +154,7 @@ create_ref_vert_shader(struct vl_mc *r)
 }
 
 static void *
-create_ref_frag_shader(struct vl_mc *r)
+create_ref_frag_shader(struct vl_mc *r, unsigned cbcr)
 {
    const float y_scale =
       r->buffer_height / 2 *
@@ -211,7 +212,15 @@ create_ref_frag_shader(struct vl_mc *r)
    ureg_fixup_label(shader, label, ureg_get_instruction_number(shader));
    ureg_ENDIF(shader);
 
-   ureg_TEX(shader, ureg_writemask(fragment, TGSI_WRITEMASK_XYZ), TGSI_TEXTURE_2D, ureg_src(ref), sampler);
+   if (!cbcr) {
+      ureg_TEX(shader, ureg_writemask(fragment, TGSI_WRITEMASK_XYZ), TGSI_TEXTURE_2D, ureg_src(ref), sampler);
+   } else {
+      struct ureg_dst color = ureg_DECL_temporary(shader);
+      ureg_TEX(shader, ureg_writemask(color, TGSI_WRITEMASK_YZ), TGSI_TEXTURE_2D, ureg_src(ref), sampler);
+      ureg_MOV(shader, ureg_writemask(fragment, TGSI_WRITEMASK_XY),
+               ureg_swizzle(ureg_src(color), TGSI_SWIZZLE_Y, TGSI_SWIZZLE_Z, TGSI_SWIZZLE_Z, TGSI_SWIZZLE_Z));
+      ureg_release_temporary(shader, color);
+   }
 
    ureg_release_temporary(shader, ref);
 
@@ -499,9 +508,12 @@ vl_mc_init(struct vl_mc *renderer, struct pipe_context *pipe,
    if (!renderer->vs_ycbcr)
       goto error_vs_ycbcr;
 
-   renderer->fs_ref = create_ref_frag_shader(renderer);
+   renderer->fs_ref = create_ref_frag_shader(renderer, 0);
    if (!renderer->fs_ref)
       goto error_fs_ref;
+   renderer->fs_ref_cbcr = create_ref_frag_shader(renderer, 1);
+   if (!renderer->fs_ref_cbcr)
+      goto error_fs_ref_cbcr;
 
    renderer->fs_ycbcr = create_ycbcr_frag_shader(renderer, scale, false, fs_callback, callback_priv);
    if (!renderer->fs_ycbcr)
@@ -515,6 +527,9 @@ vl_mc_init(struct vl_mc *renderer, struct pipe_context *pipe,
    
 error_fs_ycbcr_sub:
    renderer->pipe->delete_fs_state(renderer->pipe, renderer->fs_ycbcr);
+
+error_fs_ref_cbcr:
+   renderer->pipe->delete_fs_state(renderer->pipe, renderer->fs_ref_cbcr);
 
 error_fs_ycbcr:
    renderer->pipe->delete_fs_state(renderer->pipe, renderer->fs_ref);
@@ -541,6 +556,7 @@ vl_mc_cleanup(struct vl_mc *renderer)
 
    renderer->pipe->delete_vs_state(renderer->pipe, renderer->vs_ref);
    renderer->pipe->delete_vs_state(renderer->pipe, renderer->vs_ycbcr);
+   renderer->pipe->delete_fs_state(renderer->pipe, renderer->fs_ref_cbcr);
    renderer->pipe->delete_fs_state(renderer->pipe, renderer->fs_ref);
    renderer->pipe->delete_fs_state(renderer->pipe, renderer->fs_ycbcr);
    renderer->pipe->delete_fs_state(renderer->pipe, renderer->fs_ycbcr_sub);
@@ -607,7 +623,7 @@ prepare_pipe_4_rendering(struct vl_mc_buffer *buffer, unsigned mask)
 }
 
 void
-vl_mc_render_ref(struct vl_mc_buffer *buffer, struct pipe_sampler_view *ref)
+vl_mc_render_ref(struct vl_mc_buffer *buffer, struct pipe_sampler_view *ref, unsigned plane)
 {
    struct vl_mc *renderer;
 
@@ -618,7 +634,10 @@ vl_mc_render_ref(struct vl_mc_buffer *buffer, struct pipe_sampler_view *ref)
    renderer = buffer->renderer;
 
    renderer->pipe->bind_vs_state(renderer->pipe, renderer->vs_ref);
-   renderer->pipe->bind_fs_state(renderer->pipe, renderer->fs_ref);
+   if (plane == 1 && util_format_get_nr_components(ref->format) == 2)
+      renderer->pipe->bind_fs_state(renderer->pipe, renderer->fs_ref_cbcr);
+   else
+      renderer->pipe->bind_fs_state(renderer->pipe, renderer->fs_ref);
 
    renderer->pipe->set_fragment_sampler_views(renderer->pipe, 1, &ref);
    renderer->pipe->bind_fragment_sampler_states(renderer->pipe, 1, &renderer->sampler_ref);

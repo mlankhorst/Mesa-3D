@@ -744,7 +744,7 @@ vl_mpeg12_end_frame(struct pipe_video_decoder *decoder)
          vb[2] = vl_vb_get_mv(&buf->vertex_stream, j);;
          dec->base.context->set_vertex_buffers(dec->base.context, 3, vb);
 
-         vl_mc_render_ref(&buf->mc[i], dec->ref_frames[j][i]);
+         vl_mc_render_ref(&buf->mc[i], dec->ref_frames[j][i], i);
       }
    }
 

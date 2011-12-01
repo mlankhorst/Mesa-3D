@@ -74,7 +74,7 @@ create_vert_shader(struct vl_compositor *c)
 }
 
 static void *
-create_frag_shader_video_buffer(struct vl_compositor *c)
+create_frag_shader_video_buffer(struct vl_compositor *c, unsigned planes)
 {
    struct ureg_program *shader;
    struct ureg_src tc;
@@ -91,7 +91,8 @@ create_frag_shader_video_buffer(struct vl_compositor *c)
    tc = ureg_DECL_fs_input(shader, TGSI_SEMANTIC_GENERIC, 1, TGSI_INTERPOLATE_LINEAR);
    for (i = 0; i < 3; ++i) {
       csc[i] = ureg_DECL_constant(shader, i);
-      sampler[i] = ureg_DECL_sampler(shader, i);
+      if (i < planes)
+         sampler[i] = ureg_DECL_sampler(shader, i);
    }
    texel = ureg_DECL_temporary(shader);
    fragment = ureg_DECL_output(shader, TGSI_SEMANTIC_COLOR, 0);
@@ -100,8 +101,13 @@ create_frag_shader_video_buffer(struct vl_compositor *c)
     * texel.xyz = tex(tc, sampler[i])
     * fragment = csc * texel
     */
-   for (i = 0; i < 3; ++i)
-      ureg_TEX(shader, ureg_writemask(texel, TGSI_WRITEMASK_X << i), TGSI_TEXTURE_2D, tc, sampler[i]);
+   if (planes == 2) {
+      ureg_TEX(shader, ureg_writemask(texel, TGSI_WRITEMASK_X), TGSI_TEXTURE_2D, tc, sampler[0]);
+      ureg_TEX(shader, ureg_writemask(texel, TGSI_WRITEMASK_Y|TGSI_WRITEMASK_Z), TGSI_TEXTURE_2D, tc, sampler[1]);
+   } else {
+      for (i = 0; i < 3; ++i)
+         ureg_TEX(shader, ureg_writemask(texel, TGSI_WRITEMASK_X << i), TGSI_TEXTURE_2D, tc, sampler[i]);
+   }
 
    ureg_MOV(shader, ureg_writemask(texel, TGSI_WRITEMASK_W), ureg_imm1f(shader, 1.0f));
 
@@ -201,9 +207,14 @@ init_shaders(struct vl_compositor *c)
       return false;
    }
 
-   c->fs_video_buffer = create_frag_shader_video_buffer(c);
-   if (!c->fs_video_buffer) {
-      debug_printf("Unable to create YCbCr-to-RGB fragment shader.\n");
+   c->fs_video_buffer2 = create_frag_shader_video_buffer(c, 2);
+   if (!c->fs_video_buffer2) {
+      debug_printf("Unable to create YCbCr-to-RGB fragment shader for 2 planes.\n");
+      return false;
+   }
+   c->fs_video_buffer3 = create_frag_shader_video_buffer(c, 3);
+   if (!c->fs_video_buffer3) {
+      debug_printf("Unable to create YCbCr-to-RGB fragment shader for 3 planes.\n");
       return false;
    }
 
@@ -233,7 +244,8 @@ static void cleanup_shaders(struct vl_compositor *c)
    assert(c);
 
    c->pipe->delete_vs_state(c->pipe, c->vs);
-   c->pipe->delete_fs_state(c->pipe, c->fs_video_buffer);
+   c->pipe->delete_fs_state(c->pipe, c->fs_video_buffer2);
+   c->pipe->delete_fs_state(c->pipe, c->fs_video_buffer3);
    c->pipe->delete_fs_state(c->pipe, c->fs_palette.yuv);
    c->pipe->delete_fs_state(c->pipe, c->fs_palette.rgb);
    c->pipe->delete_fs_state(c->pipe, c->fs_rgba);
@@ -672,13 +684,17 @@ vl_compositor_set_buffer_layer(struct vl_compositor *c,
    assert(layer < VL_COMPOSITOR_MAX_LAYERS);
 
    c->used_layers |= 1 << layer;
-   c->layers[layer].fs = c->fs_video_buffer;
 
-   sampler_views = buffer->get_sampler_view_components(buffer);
+   sampler_views = buffer->get_sampler_view_planes(buffer);
    for (i = 0; i < 3; ++i) {
       c->layers[layer].samplers[i] = c->sampler_linear;
       pipe_sampler_view_reference(&c->layers[layer].sampler_views[i], sampler_views[i]);
    }
+   if (sampler_views[2])
+      c->layers[layer].fs = c->fs_video_buffer3;
+   else
+      c->layers[layer].fs = c->fs_video_buffer2;
+   assert(sampler_views[1]);
 
    calc_src_and_dst(&c->layers[layer], buffer->width, buffer->height,
                     src_rect ? *src_rect : default_rect(&c->layers[layer]),
