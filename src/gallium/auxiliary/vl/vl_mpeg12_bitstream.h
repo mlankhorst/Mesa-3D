@@ -49,6 +49,8 @@ void
 vl_mpg12_bs_set_picture_desc(struct vl_mpg12_bs *bs, struct pipe_mpeg12_picture_desc *picture);
 
 void
-vl_mpg12_bs_decode(struct vl_mpg12_bs *bs, unsigned num_bytes, const uint8_t *buffer);
+vl_mpg12_bs_decode(struct vl_mpg12_bs *bs,
+                   unsigned n, unsigned len,
+                   const unsigned *lens, const void* const*buffer);
 
 #endif /* vl_mpeg12_bitstream_h */

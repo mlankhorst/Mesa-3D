@@ -826,7 +826,7 @@ decode_slice(struct vl_mpg12_bs *bs)
       inc += vl_vlc_get_vlclbf(&bs->vlc, tbl_B1, 11);
       if (x != -1) {
          mb.num_skipped_macroblocks = inc - 1;
-         bs->decoder->decode_macroblock(bs->decoder, &mb.base, 1);
+         bs->decoder->decode_macroblock(bs->decoder, NULL, NULL, &mb.base, 1);
       }
       mb.x = x += inc;
 
@@ -930,7 +930,7 @@ decode_slice(struct vl_mpg12_bs *bs)
    } while (vl_vlc_bits_left(&bs->vlc) && vl_vlc_peekbits(&bs->vlc, 23));
 
    mb.num_skipped_macroblocks = 0;
-   bs->decoder->decode_macroblock(bs->decoder, &mb.base, 1);
+   bs->decoder->decode_macroblock(bs->decoder, NULL, NULL, &mb.base, 1);
 }
 
 void
@@ -958,11 +958,12 @@ vl_mpg12_bs_set_picture_desc(struct vl_mpg12_bs *bs, struct pipe_mpeg12_picture_
 }
 
 void
-vl_mpg12_bs_decode(struct vl_mpg12_bs *bs, unsigned num_bytes, const uint8_t *buffer)
+vl_mpg12_bs_decode(struct vl_mpg12_bs *bs, unsigned num_buffers, unsigned pad,
+                   const unsigned *sizes, const void * const *buffers)
 {
    assert(bs);
 
-   vl_vlc_init(&bs->vlc, 1, (const void * const *)&buffer, &num_bytes);
+   vl_vlc_init(&bs->vlc, num_buffers, buffers, sizes);
    while (vl_vlc_bits_left(&bs->vlc) > 32) {
       uint32_t code = vl_vlc_peekbits(&bs->vlc, 32);
 

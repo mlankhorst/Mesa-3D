@@ -60,55 +60,11 @@ struct pipe_video_decoder
    void (*destroy)(struct pipe_video_decoder *decoder);
 
    /**
-    * Creates a decoder buffer
-    */
-   void *(*create_buffer)(struct pipe_video_decoder *decoder);
-
-   /**
-    * Destroys a decoder buffer
-    */
-   void (*destroy_buffer)(struct pipe_video_decoder *decoder, void *buffer);
-
-   /**
-    * set the current decoder buffer
-    */
-   void (*set_decode_buffer)(struct pipe_video_decoder *decoder, void *buffer);
-
-   /**
-    * set the picture parameters for the next frame
-    * only used for bitstream decoding
-    */
-   void (*set_picture_parameters)(struct pipe_video_decoder *decoder,
-                                  struct pipe_picture_desc *picture);
-
-   /**
-    * set the quantification matrixes
-    */
-   void (*set_quant_matrix)(struct pipe_video_decoder *decoder,
-                            const struct pipe_quant_matrix *matrix);
-
-   /**
-    * set target where video data is decoded to
-    */
-   void (*set_decode_target)(struct pipe_video_decoder *decoder,
-                             struct pipe_video_buffer *target);
-
-   /**
-    * set reference frames for motion compensation
-    */
-   void (*set_reference_frames)(struct pipe_video_decoder *decoder,
-                                struct pipe_video_buffer **ref_frames,
-                                unsigned num_ref_frames);
-
-   /**
-    * start decoding of a new frame
-    */
-   void (*begin_frame)(struct pipe_video_decoder *decoder);
-
-   /**
     * decode a macroblock
     */
    void (*decode_macroblock)(struct pipe_video_decoder *decoder,
+                             struct pipe_video_buffer *target,
+                             struct pipe_picture_desc *picture,
                              const struct pipe_macroblock *macroblocks,
                              unsigned num_macroblocks);
 
@@ -116,12 +72,10 @@ struct pipe_video_decoder
     * decode a bitstream
     */
    void (*decode_bitstream)(struct pipe_video_decoder *decoder,
-                            unsigned num_bytes, const void *data);
-
-   /**
-    * end decoding of the current frame
-    */
-   void (*end_frame)(struct pipe_video_decoder *decoder);
+                            struct pipe_video_buffer *target,
+                            struct pipe_picture_desc *picture,
+                            unsigned num_buffers, unsigned total_bytes,
+                            unsigned const *num_bytes, const void *const *data);
 
    /**
     * flush any outstanding command buffers to the hardware

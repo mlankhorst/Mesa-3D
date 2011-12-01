@@ -424,44 +424,24 @@ nouveau_decoder_surface_index(struct nouveau_decoder *dec,
 }
 
 static void
-nouveau_decoder_set_picture_parameters(struct pipe_video_decoder *decoder,
-                                       struct pipe_picture_desc *picture_desc)
-{
-   struct nouveau_decoder *dec = (struct nouveau_decoder *)decoder;
-   struct pipe_mpeg12_picture_desc *desc;
-   desc = (struct pipe_mpeg12_picture_desc *)picture_desc;
-   dec->picture_structure = desc->picture_structure;
-}
-
-static void
-nouveau_decoder_set_reference_frames(struct pipe_video_decoder *decoder,
-                                     struct pipe_video_buffer **buffers,
-                                     unsigned count)
-{
-   struct nouveau_decoder *dec = (struct nouveau_decoder *)decoder;
-   if (count >= 1 && buffers[0])
-      dec->past = nouveau_decoder_surface_index(dec, buffers[0]);
-   if (count >= 2 && buffers[1])
-      dec->future = nouveau_decoder_surface_index(dec, buffers[1]);
-}
-
-static void
-nouveau_decoder_set_decode_target(struct pipe_video_decoder *decoder,
-                                  struct pipe_video_buffer *buffer)
-{
-   struct nouveau_decoder *dec = (struct nouveau_decoder *)decoder;
-   dec->current = nouveau_decoder_surface_index(dec, buffer);
-}
-
-static void
 nouveau_decoder_decode_macroblock(struct pipe_video_decoder *decoder,
+                                  struct pipe_video_buffer *target,
+                                  struct pipe_picture_desc *picture,
                                   const struct pipe_macroblock *pipe_mb,
                                   unsigned num_macroblocks)
 {
    struct nouveau_decoder *dec = (struct nouveau_decoder *)decoder;
+   struct pipe_mpeg12_picture_desc *desc = (struct pipe_mpeg12_picture_desc*)picture;
    const struct pipe_mpeg12_macroblock *mb;
    unsigned i;
+
+   dec->current = nouveau_decoder_surface_index(dec, target);
    assert(dec->current < 8);
+   dec->picture_structure = desc->picture_structure;
+   if (desc->ref_backward)
+      dec->past = nouveau_decoder_surface_index(dec, desc->ref_backward);
+   if (desc->ref_forward)
+      dec->future = nouveau_decoder_surface_index(dec, desc->ref_forward);
 
    if (nouveau_vpe_init(dec)) return;
    mb = (const struct pipe_mpeg12_macroblock *)pipe_mb;
@@ -509,16 +489,6 @@ nouveau_decoder_destroy(struct pipe_video_decoder *decoder)
       nouveau_bo_ref(NULL, &dec->fence_bo);
    nouveau_grobj_free(&dec->mpeg);
    FREE(dec);
-}
-
-static void
-nouveau_decoder_begin_frame(struct pipe_video_decoder *decoder)
-{
-}
-
-static void
-nouveau_decoder_end_frame(struct pipe_video_decoder *decoder)
-{
 }
 
 static struct pipe_video_decoder *
@@ -571,11 +541,6 @@ nouveau_create_decoder(struct pipe_context *context,
    dec->base.height = height;
    dec->base.max_references = max_references;
    dec->base.destroy = nouveau_decoder_destroy;
-   dec->base.begin_frame = nouveau_decoder_begin_frame;
-   dec->base.end_frame = nouveau_decoder_end_frame;
-   dec->base.set_decode_target = nouveau_decoder_set_decode_target;
-   dec->base.set_picture_parameters = nouveau_decoder_set_picture_parameters;
-   dec->base.set_reference_frames = nouveau_decoder_set_reference_frames;
    dec->base.decode_macroblock = nouveau_decoder_decode_macroblock;
    dec->base.flush = nouveau_decoder_flush;
    dec->screen = screen;
@@ -813,8 +778,6 @@ nouveau_screen_get_video_param(struct pipe_screen *pscreen,
    case PIPE_VIDEO_CAP_MAX_WIDTH:
    case PIPE_VIDEO_CAP_MAX_HEIGHT:
       return vl_video_buffer_max_size(pscreen);
-   case PIPE_VIDEO_CAP_NUM_BUFFERS_DESIRED:
-      return vl_num_buffers_desired(pscreen, profile);
    default:
       debug_printf("unknown video param: %d\n", param);
       return 0;

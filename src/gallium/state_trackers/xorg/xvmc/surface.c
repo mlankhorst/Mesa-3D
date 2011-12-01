@@ -96,73 +96,6 @@ MacroBlocksToPipe(XvMCContextPrivate *context,
    }
 }
 
-static void
-SetDecoderStatus(XvMCSurfacePrivate *surface)
-{
-   struct pipe_video_decoder *decoder;
-   struct pipe_video_buffer *ref_frames[2];
-   struct pipe_mpeg12_picture_desc desc = { { PIPE_VIDEO_PROFILE_MPEG1} };
-
-   XvMCContextPrivate *context_priv;
-
-   unsigned i, num_refs = 0;
-
-   desc.picture_structure = surface->picture_structure;
-
-   assert(surface);
-
-   context_priv = surface->context->privData;
-   decoder = context_priv->decoder;
-
-   if (surface->decode_buffer)
-      decoder->set_decode_buffer(decoder, surface->decode_buffer);
-   decoder->set_decode_target(decoder, surface->video_buffer);
-
-   for (i = 0; i < 2; ++i) {
-      if (surface->ref[i]) {
-         XvMCSurfacePrivate *ref = surface->ref[i]->privData;
-
-         if (ref)
-            ref_frames[num_refs++] = ref->video_buffer;
-      }
-   }
-   decoder->set_reference_frames(decoder, ref_frames, num_refs);
-   decoder->set_picture_parameters(context_priv->decoder, &desc.base);
-}
-
-static void
-RecursiveEndFrame(XvMCSurfacePrivate *surface)
-{
-   XvMCContextPrivate *context_priv;
-   unsigned i;
-
-   assert(surface);
-
-   context_priv = surface->context->privData;
-
-   for ( i = 0; i < 2; ++i ) {
-      if (surface->ref[i]) {
-         XvMCSurface *ref = surface->ref[i];
-
-         assert(ref);
-
-         surface->ref[i] = NULL;
-         RecursiveEndFrame(ref->privData);
-         surface->ref[i] = ref;
-      }
-   }
-
-   if (surface->picture_structure) {
-      SetDecoderStatus(surface);
-      surface->picture_structure = 0;
-
-      for (i = 0; i < 2; ++i)
-         surface->ref[i] = NULL;
-
-      context_priv->decoder->end_frame(context_priv->decoder);
-   }
-}
-
 PUBLIC
 Status XvMCCreateSurface(Display *dpy, XvMCContext *context, XvMCSurface *surface)
 {
@@ -186,8 +119,6 @@ Status XvMCCreateSurface(Display *dpy, XvMCContext *context, XvMCSurface *surfac
    if (!surface_priv)
       return BadAlloc;
 
-   if (context_priv->decoder->create_buffer)
-      surface_priv->decode_buffer = context_priv->decoder->create_buffer(context_priv->decoder);
    surface_priv->video_buffer = pipe->create_video_buffer
    (
       pipe, PIPE_FORMAT_NV12, context_priv->decoder->chroma_format,
@@ -218,7 +149,7 @@ Status XvMCRenderSurface(Display *dpy, XvMCContext *context, unsigned int pictur
 )
 {
    struct pipe_mpeg12_macroblock mb[num_macroblocks];
-   struct pipe_video_decoder *decoder;
+   struct pipe_mpeg12_picture_desc desc = { { PIPE_VIDEO_PROFILE_MPEG1} };
 
    XvMCContextPrivate *context_priv;
    XvMCSurfacePrivate *target_surface_priv;
@@ -257,7 +188,6 @@ Status XvMCRenderSurface(Display *dpy, XvMCContext *context, unsigned int pictur
    assert(flags == 0 || flags == XVMC_SECOND_FIELD);
 
    context_priv = context->privData;
-   decoder = context_priv->decoder;
 
    target_surface_priv = target_surface->privData;
    past_surface_priv = past_surface ? past_surface->privData : NULL;
@@ -268,12 +198,6 @@ Status XvMCRenderSurface(Display *dpy, XvMCContext *context, unsigned int pictur
    assert(!future_surface || future_surface_priv->context == context);
 
    // call end frame on all referenced frames
-   if (past_surface)
-      RecursiveEndFrame(past_surface->privData);
-
-   if (future_surface)
-      RecursiveEndFrame(future_surface->privData);
-
    xvmc_mb = macroblocks->macro_blocks + first_macroblock;
 
    /* If the surface we're rendering hasn't changed the ref frames shouldn't change. */
@@ -284,24 +208,24 @@ Status XvMCRenderSurface(Display *dpy, XvMCContext *context, unsigned int pictur
        (xvmc_mb->x == 0 && xvmc_mb->y == 0))) {
 
       // If they change anyway we must assume that the current frame is ended
-      RecursiveEndFrame(target_surface_priv);
+      context_priv->decoder->flush(context_priv->decoder);
    }
 
    target_surface_priv->ref[0] = past_surface;
    target_surface_priv->ref[1] = future_surface;
 
-   if (target_surface_priv->picture_structure)
-      SetDecoderStatus(target_surface_priv);
-   else {
-      target_surface_priv->picture_structure = picture_structure;
-      SetDecoderStatus(target_surface_priv);
-      decoder->begin_frame(decoder);
-   }
+   target_surface_priv->picture_structure = picture_structure;
+
+   desc.picture_structure = picture_structure;
+   if (past_surface)
+      desc.ref_forward = ((XvMCSurfacePrivate*)past_surface->privData)->video_buffer;
+   if (future_surface)
+      desc.ref_backward = ((XvMCSurfacePrivate*)future_surface->privData)->video_buffer;
 
    MacroBlocksToPipe(context_priv, target_surface_priv, picture_structure,
                      xvmc_mb, blocks, mb, num_macroblocks);
 
-   context_priv->decoder->decode_macroblock(context_priv->decoder, &mb[0].base, num_macroblocks);
+   context_priv->decoder->decode_macroblock(context_priv->decoder, target_surface_priv->video_buffer, &desc.base, &mb[0].base, num_macroblocks);
 
    XVMC_MSG(XVMC_TRACE, "[XvMC] Submitted surface %p for rendering.\n", target_surface);
 
@@ -365,6 +289,7 @@ Status XvMCPutSurface(Display *dpy, XvMCSurface *surface, Drawable drawable,
    surface_priv = surface->privData;
    context = surface_priv->context;
    context_priv = context->privData;
+   context_priv->decoder->flush(context_priv->decoder);
 
    assert(flags == XVMC_TOP_FIELD || flags == XVMC_BOTTOM_FIELD || flags == XVMC_FRAME_PICTURE);
    assert(srcx + srcw - 1 < surface->width);
@@ -398,10 +323,6 @@ Status XvMCPutSurface(Display *dpy, XvMCSurface *surface, Drawable drawable,
    assert(destx + destw - 1 < drawable_surface->width);
    assert(desty + desth - 1 < drawable_surface->height);
     */
-
-   RecursiveEndFrame(surface_priv);
-
-   context_priv->decoder->flush(context_priv->decoder);
 
    vl_compositor_clear_layers(compositor);
    vl_compositor_set_buffer_layer(compositor, 0, surface_priv->video_buffer, &src_rect, NULL);
@@ -499,13 +420,7 @@ Status XvMCDestroySurface(Display *dpy, XvMCSurface *surface)
 
    surface_priv = surface->privData;
    context_priv = surface_priv->context->privData;
-   
-   if (surface_priv->picture_structure) {
-      SetDecoderStatus(surface_priv);
-      context_priv->decoder->end_frame(context_priv->decoder);
-   }
-   if (surface_priv->decode_buffer)
-      context_priv->decoder->destroy_buffer(context_priv->decoder, surface_priv->decode_buffer);
+   context_priv->decoder->flush(context_priv->decoder);
    surface_priv->video_buffer->destroy(surface_priv->video_buffer);
    FREE(surface_priv);
    surface->privData = NULL;

@@ -614,9 +614,9 @@ init_source(struct vl_idct *idct, struct vl_idct_buffer *buffer)
 }
 
 static void
-cleanup_source(struct vl_idct *idct, struct vl_idct_buffer *buffer)
+cleanup_source(struct vl_idct_buffer *buffer)
 {
-   assert(idct && buffer);
+   assert(buffer);
 
    pipe_surface_reference(&buffer->fb_state_mismatch.cbufs[0], NULL);
 
@@ -665,13 +665,13 @@ error_surfaces:
 }
 
 static void
-cleanup_intermediate(struct vl_idct *idct, struct vl_idct_buffer *buffer)
+cleanup_intermediate(struct vl_idct_buffer *buffer)
 {
    unsigned i;
 
-   assert(idct && buffer);
+   assert(buffer);
 
-   for(i = 0; i < idct->nr_of_render_targets; ++i)
+   for(i = 0; i < buffer->fb_state.nr_cbufs; ++i)
       pipe_surface_reference(&buffer->fb_state.cbufs[i], NULL);
 
    pipe_sampler_view_reference(&buffer->sampler_views.individual.intermediate, NULL);
@@ -823,8 +823,8 @@ vl_idct_cleanup_buffer(struct vl_idct_buffer *buffer)
 {
    assert(buffer);
 
-   cleanup_source(buffer->idct, buffer);
-   cleanup_intermediate(buffer->idct, buffer);
+   cleanup_source(buffer);
+   cleanup_intermediate(buffer);
 
    pipe_sampler_view_reference(&buffer->sampler_views.individual.matrix, NULL);
    pipe_sampler_view_reference(&buffer->sampler_views.individual.transpose, NULL);
