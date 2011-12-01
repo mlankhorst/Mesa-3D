@@ -309,6 +309,65 @@ vlVdpDecoderRenderVC1(struct pipe_vc1_picture_desc *picture,
    return VDP_STATUS_OK;
 }
 
+static VdpStatus
+vlVdpDecoderRenderH264(struct pipe_h264_picture_desc *p,
+                       VdpPictureInfoH264 *vdp)
+{
+   unsigned i;
+   VDPAU_MSG(VDPAU_TRACE, "[VDPAU] Decoding H264\n");
+
+   p->slice_count = vdp->slice_count;
+   p->field_order_cnt[0] = vdp->field_order_cnt[0];
+   p->field_order_cnt[1] = vdp->field_order_cnt[1];
+   p->is_reference = vdp->is_reference;
+
+   p->frame_num = vdp->frame_num;
+   p->field_pic_flag = vdp->field_pic_flag;
+   p->bottom_field_flag = vdp->bottom_field_flag;
+   p->num_ref_frames = vdp->num_ref_frames;
+   p->mb_adaptive_frame_field_flag = vdp->mb_adaptive_frame_field_flag;
+   p->constrained_intra_pred_flag = vdp->constrained_intra_pred_flag;
+   p->weighted_pred_flag = vdp->weighted_pred_flag;
+   p->weighted_bipred_idc = vdp->weighted_bipred_idc;
+   p->frame_mbs_only_flag = vdp->frame_mbs_only_flag;
+   p->transform_8x8_mode_flag = vdp->transform_8x8_mode_flag;
+   p->chroma_qp_index_offset = vdp->chroma_qp_index_offset;
+   p->second_chroma_qp_index_offset = vdp->second_chroma_qp_index_offset;
+   p->pic_init_qp_minus26 = vdp->pic_init_qp_minus26;
+   p->num_ref_idx_l0_active_minus1 = vdp->num_ref_idx_l0_active_minus1;
+   p->num_ref_idx_l1_active_minus1 = vdp->num_ref_idx_l1_active_minus1;
+   p->log2_max_frame_num_minus4 = vdp->log2_max_frame_num_minus4;
+   p->pic_order_cnt_type = vdp->pic_order_cnt_type;
+   p->log2_max_pic_order_cnt_lsb_minus4 = vdp->log2_max_pic_order_cnt_lsb_minus4;
+   p->delta_pic_order_always_zero_flag = vdp->delta_pic_order_always_zero_flag;
+   p->direct_8x8_inference_flag = vdp->direct_8x8_inference_flag;
+   p->entropy_coding_mode_flag = vdp->entropy_coding_mode_flag;
+   p->pic_order_present_flag = vdp->pic_order_present_flag;
+   p->deblocking_filter_control_present_flag = vdp->deblocking_filter_control_present_flag;
+   p->redundant_pic_cnt_present_flag = vdp->redundant_pic_cnt_present_flag;
+
+   p->scaling_lists_4x4 = vdp->scaling_lists_4x4[0];
+   p->scaling_lists_8x8 = vdp->scaling_lists_8x8[0];
+   for (i = 0; i < 16; ++i) {
+      struct pipe_h264_reference_frame *ref = &p->refs[i];
+      VdpReferenceFrameH264 *vdp_ref = &vdp->referenceFrames[i];
+      if (vdp_ref->surface != VDP_INVALID_HANDLE) {
+         vlVdpSurface *surf = vlGetDataHTAB(vdp_ref->surface);
+         if (!surf)
+            return VDP_STATUS_INVALID_HANDLE;
+         ref->surface = surf->video_buffer;
+      } else
+         ref->surface = NULL;
+      ref->is_long_term = vdp_ref->is_long_term;
+      ref->top_is_reference = vdp_ref->top_is_reference;
+      ref->bottom_is_reference = vdp_ref->bottom_is_reference;
+      ref->field_order_cnt[0] = vdp_ref->field_order_cnt[0];
+      ref->field_order_cnt[1] = vdp_ref->field_order_cnt[1];
+      ref->frame_idx = vdp_ref->frame_idx;
+   }
+   return VDP_STATUS_OK;
+}
+
 /**
  * Decode a compressed field/frame and render the result into a VdpVideoSurface.
  */
@@ -329,6 +388,7 @@ vlVdpDecoderRender(VdpDecoder decoder,
       struct pipe_mpeg12_picture_desc mpeg12;
       struct pipe_mpeg4_picture_desc mpeg4;
       struct pipe_vc1_picture_desc vc1;
+      struct pipe_h264_picture_desc h264;
    } desc;
 
    VDPAU_MSG(VDPAU_TRACE, "[VDPAU] Decoding\n");
@@ -363,6 +423,9 @@ vlVdpDecoderRender(VdpDecoder decoder,
       break;
    case PIPE_VIDEO_CODEC_VC1:
       ret = vlVdpDecoderRenderVC1(&desc.vc1, (VdpPictureInfoVC1 *)picture_info);
+      break;
+   case PIPE_VIDEO_CODEC_MPEG4_AVC:
+      ret = vlVdpDecoderRenderH264(&desc.h264, (VdpPictureInfoH264 *)picture_info);
       break;
    default:
       return VDP_STATUS_INVALID_DECODER_PROFILE;
