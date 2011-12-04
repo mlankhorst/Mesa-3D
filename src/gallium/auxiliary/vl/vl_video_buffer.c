@@ -220,8 +220,11 @@ vl_video_buffer_create(struct pipe_context *pipe,
       pipe, buffer_width, buffer_height, 1,
       chroma_format, resource_formats, PIPE_USAGE_STATIC
    );
-   if (result)
+   if (result) {
       result->buffer_format = buffer_format;
+      result->width = width;
+      result->height = height;
+   }
 
    return result;
 }

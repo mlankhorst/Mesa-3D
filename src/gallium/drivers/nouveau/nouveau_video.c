@@ -434,6 +434,8 @@ nouveau_decoder_decode_macroblock(struct pipe_video_decoder *decoder,
    struct pipe_mpeg12_picture_desc *desc = (struct pipe_mpeg12_picture_desc*)picture;
    const struct pipe_mpeg12_macroblock *mb;
    unsigned i;
+   assert(target->width == decoder->width);
+   assert(target->height == decoder->height);
 
    dec->current = nouveau_decoder_surface_index(dec, target);
    assert(dec->current < 8);
@@ -515,9 +517,6 @@ nouveau_create_decoder(struct pipe_context *context,
    if (screen->device->chipset >= 0x98 && screen->device->chipset != 0xa0)
       goto vl;
 
-   width = align(width, 64);
-   height = align(height, 64);
-
    if (is8274)
        ret = nouveau_grobj_alloc(chan, 0xbeef8274, 0x8274, &mpeg);
    else
@@ -577,8 +576,8 @@ nouveau_create_decoder(struct pipe_context *context,
    OUT_RING(chan, chan->vram->handle);
 
    BEGIN_RING(chan, mpeg, NV31_MPEG_PITCH, 2);
-   OUT_RING(chan, width | NV31_MPEG_PITCH_UNK);
-   OUT_RING(chan, (height << NV31_MPEG_SIZE_H__SHIFT) | width);
+   OUT_RING(chan, align(width, 64) | NV31_MPEG_PITCH_UNK);
+   OUT_RING(chan, (align(height, 64) << NV31_MPEG_SIZE_H__SHIFT) | align(width, 64));
 
    BEGIN_RING(chan, mpeg, NV31_MPEG_FORMAT, 2);
    OUT_RING(chan, 0);
@@ -714,16 +713,13 @@ nouveau_video_buffer_create(struct pipe_context *pipe,
    struct pipe_resource templ;
 
    /* Only do a linear surface when a hardware decoder is used
-    * hardware decoder is only supported on some chipsets
+    * hardware XvMC decoder is only supported on some chipsets
     * and it only supports the NV12 format
     */
    if (buffer_format != PIPE_FORMAT_NV12 || getenv("XVMC_VL") ||
+       chroma_format != PIPE_VIDEO_CHROMA_FORMAT_420 ||
        (screen->device->chipset >= 0x98 && screen->device->chipset != 0xa0))
       return vl_video_buffer_create(pipe, buffer_format, chroma_format, width, height);
-
-   assert(chroma_format == PIPE_VIDEO_CHROMA_FORMAT_420);
-   width = align(width, 64);
-   height = align(height, 64);
 
    buffer = CALLOC_STRUCT(nouveau_video_buffer);
    if (!buffer)
@@ -741,8 +737,8 @@ nouveau_video_buffer_create(struct pipe_context *pipe,
    memset(&templ, 0, sizeof(templ));
    templ.target = PIPE_TEXTURE_2D;
    templ.format = PIPE_FORMAT_R8_UNORM;
-   templ.width0 = width;
-   templ.height0 = height;
+   templ.width0 = align(width, 64);
+   templ.height0 = align(height, 64);
    templ.depth0 = 1;
    templ.array_size = 1;
    templ.bind = PIPE_BIND_SAMPLER_VIEW | PIPE_BIND_RENDER_TARGET;
