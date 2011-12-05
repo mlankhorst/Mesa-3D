@@ -20,6 +20,17 @@
 #define NV04_PFIFO_MAX_PACKET_LEN 2047
 #endif
 
+static INLINE void
+nouveau_bo_validate(struct nouveau_channel *chan,
+                    struct nouveau_bo *bo, unsigned flags)
+{
+   nouveau_reloc_emit(chan, NULL, 0, NULL, bo, 0, 0, flags, 0, 0);
+}
+
+#ifdef NVC0_USE_AUTOBIND
+#include "nouveau/nvc0_pushbuf.h"
+#else
+
 #define NVC0_SUBCH_3D 1
 #define NVC0_SUBCH_2D 2
 #define NVC0_SUBCH_MF 3
@@ -42,13 +53,6 @@ static inline uint32_t
 nouveau_bo_tile_layout(const struct nouveau_bo *bo)
 {
    return bo->tile_flags & NOUVEAU_BO_TILE_LAYOUT_MASK;
-}
-
-static INLINE void
-nouveau_bo_validate(struct nouveau_channel *chan,
-                    struct nouveau_bo *bo, unsigned flags)
-{
-   nouveau_reloc_emit(chan, NULL, 0, NULL, bo, 0, 0, flags, 0, 0);
 }
 
 /* incremental methods */
@@ -117,4 +121,5 @@ BIND_RING(struct nouveau_channel *chan, struct nouveau_grobj *gr, unsigned s)
    OUT_RING  (chan, gr->grclass);
 }
 
+#endif
 #endif
