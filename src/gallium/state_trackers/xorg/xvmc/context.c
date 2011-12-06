@@ -261,7 +261,7 @@ Status XvMCCreateContext(Display *dpy, XvPortID port, int surface_type_id,
       return BadAlloc;
    }
 
-   if (!vl_compositor_init(&context_priv->compositor, vctx->pipe)) {
+   if (!vl_compositor_init_video(&context_priv->compositor, vctx->pipe, PIPE_VIDEO_CHROMA_FORMAT_420, width, height)) {
       XVMC_MSG(XVMC_ERR, "[XvMC] Could not create VL compositor.\n");
       context_priv->decoder->destroy(context_priv->decoder);
       vl_video_destroy(vctx);

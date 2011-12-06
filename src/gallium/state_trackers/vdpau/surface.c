@@ -165,6 +165,112 @@ vlVdpVideoSurfaceGetBitsYCbCr(VdpVideoSurface surface,
    return VDP_STATUS_NO_IMPLEMENTATION;
 }
 
+/* Really, don't try to copy between everything here..
+ */
+static void
+vl_vdp_copy(enum pipe_format dst_format,
+            enum pipe_format src_format,
+            enum pipe_format sv_format,
+            unsigned char *map,
+            unsigned interlaced,
+            unsigned i,
+            void const *const *addrs,
+            uint32_t const *pitches,
+            unsigned transfer_stride,
+            unsigned w,
+            unsigned h)
+{
+   unsigned j = i>>interlaced;
+   if (src_format == dst_format)
+      goto match;
+   if ((dst_format == PIPE_FORMAT_NV12 || dst_format == PIPE_FORMAT_YV12) &&
+       (src_format == PIPE_FORMAT_NV12 || src_format == PIPE_FORMAT_YV12)) {
+      if (!j) {
+         goto match;
+      } else if (dst_format == PIPE_FORMAT_NV12) {
+         /* YV12 -> NV12 cbcr copy */
+         for (j = 1; j < 3; ++j) {
+            unsigned pitch = pitches[j] << interlaced;
+            const unsigned char *src = addrs[j];
+            char unsigned *dst = map + (j == 1);
+            unsigned lines, k;
+            if (i & interlaced)
+               src += pitches[j];
+            for (lines = h; lines; --lines) {
+               for (k = 0; k < w; ++k)
+                  dst[k*2] = src[k];
+               src += pitch;
+               dst += transfer_stride;
+            }
+            assert(w*2 <= transfer_stride);
+            assert(w <= pitches[j]);
+         }
+         return;
+      }
+   }
+   assert(0);
+   return;
+
+match:
+   {
+      unsigned pitch = pitches[j] << interlaced;
+      const unsigned char *addr = addrs[j];
+      if (i & interlaced)
+         addr += pitches[j];
+      util_copy_rect(map, sv_format, transfer_stride, 0, 0,
+                     w, h, addr, pitch, 0, 0);
+      }
+}
+
+static VdpStatus
+vl_vdp_upload(struct pipe_video_buffer *buf,
+              enum pipe_format format,
+              struct pipe_sampler_view **sampler_views,
+              unsigned interlaced,
+              void const *const *addrs,
+              uint32_t const *pitches)
+{
+   unsigned p = interlaced ? 6 : 3;
+   unsigned i, j, h, w;
+   struct pipe_context *pipe = buf->context;
+
+   for (i = 0; i < p; ++i) {
+      struct pipe_transfer *transfer;
+      void *map;
+      h = buf->height;
+      j = i>>interlaced;
+      if (interlaced)
+         h = (h + !(i&1))/2;
+      if (j && buf->chroma_format != PIPE_VIDEO_CHROMA_FORMAT_444)
+         h = (h + 1)/2;
+      w = buf->width;
+      if (j && buf->chroma_format == PIPE_VIDEO_CHROMA_FORMAT_420)
+         w = (w + 1)/2;
+
+      struct pipe_sampler_view *sv;
+      if (j && format == PIPE_FORMAT_YV12 && buf->buffer_format == format)
+         sv = sampler_views[i^p];
+      else
+         sv = sampler_views[i];
+      if (!sv)
+         return VDP_STATUS_OK;
+      struct pipe_box dst_box = { 0, 0, sv->u.tex.first_layer, w, h, 1 };
+
+      transfer = pipe->get_transfer(pipe, sv->texture, 0, PIPE_TRANSFER_WRITE, &dst_box);
+      if (!transfer)
+         return VDP_STATUS_RESOURCES;
+
+      map = pipe->transfer_map(pipe, transfer);
+      if (map) {
+         vl_vdp_copy(buf->buffer_format, format, sv->texture->format, map, interlaced, i, addrs, pitches, transfer->stride, w, h);
+         pipe->transfer_unmap(pipe, transfer);
+      }
+
+      pipe->transfer_destroy(pipe, transfer);
+   }
+   return VDP_STATUS_OK;
+}
+
 /**
  * Copy image data from application memory in a specific YCbCr format to
  * a VdpVideoSurface.
@@ -178,7 +284,6 @@ vlVdpVideoSurfacePutBitsYCbCr(VdpVideoSurface surface,
    enum pipe_format pformat = FormatYCBCRToPipe(source_ycbcr_format);
    struct pipe_context *pipe;
    struct pipe_sampler_view **sampler_views;
-   unsigned i;
 
    if (!vlCreateHTAB())
       return VDP_STATUS_RESOURCES;
@@ -191,37 +296,10 @@ vlVdpVideoSurfacePutBitsYCbCr(VdpVideoSurface surface,
    if (!pipe)
       return VDP_STATUS_INVALID_HANDLE;
 
-   if (p_surf->video_buffer == NULL || pformat != p_surf->video_buffer->buffer_format) {
-      assert(0); // TODO Recreate resource
-      return VDP_STATUS_NO_IMPLEMENTATION;
-   }
-
-   sampler_views = p_surf->video_buffer->get_sampler_view_planes(p_surf->video_buffer);
-   if (!sampler_views)
-      return VDP_STATUS_RESOURCES;
-
-   for (i = 0; i < 3; ++i) { //TODO put nr of planes into util format
-      struct pipe_sampler_view *sv = sampler_views[i ? i ^ 3 : 0];
-      struct pipe_box dst_box = { 0, 0, 0, sv->texture->width0, sv->texture->height0, 1 };
-
-      struct pipe_transfer *transfer;
-      void *map;
-
-      transfer = pipe->get_transfer(pipe, sv->texture, 0, PIPE_TRANSFER_WRITE, &dst_box);
-      if (!transfer)
-         return VDP_STATUS_RESOURCES;
-
-      map = pipe->transfer_map(pipe, transfer);
-      if (map) {
-         util_copy_rect(map, sv->texture->format, transfer->stride, 0, 0,
-                        dst_box.width, dst_box.height,
-                        source_data[i], source_pitches[i], 0, 0);
-
-         pipe->transfer_unmap(pipe, transfer);
-      }
-
-      pipe->transfer_destroy(pipe, transfer);
-   }
-
-   return VDP_STATUS_OK;
+   sampler_views = p_surf->video_buffer->get_sampler_view_planes(p_surf->video_buffer, 0);
+   if (sampler_views)
+      return vl_vdp_upload(p_surf->video_buffer, pformat, sampler_views, 0, source_data, source_pitches);
+   sampler_views = p_surf->video_buffer->get_sampler_view_planes(p_surf->video_buffer, 1);
+   assert(sampler_views);
+   return vl_vdp_upload(p_surf->video_buffer, pformat, sampler_views, 1, source_data, source_pitches);
 }

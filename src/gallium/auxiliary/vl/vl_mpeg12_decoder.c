@@ -171,11 +171,11 @@ init_idct_buffer(struct vl_mpeg12_decoder *dec, struct vl_mpeg12_buffer *buffer)
 
    assert(dec && buffer);
 
-   idct_source_sv = dec->idct_source->get_sampler_view_planes(dec->idct_source);
+   idct_source_sv = dec->idct_source->get_sampler_view_planes(dec->idct_source, 0);
    if (!idct_source_sv)
       goto error_source_sv;
 
-   mc_source_sv = dec->mc_source->get_sampler_view_planes(dec->mc_source);
+   mc_source_sv = dec->mc_source->get_sampler_view_planes(dec->mc_source, 0);
    if (!mc_source_sv)
       goto error_mc_source_sv;
 
@@ -513,7 +513,7 @@ vl_mpeg12_set_picture_parameters(struct pipe_video_decoder *decoder,
       memcpy(dec->non_intra_matrix, pic->non_intra_matrix, 64);
    }
    if (pic->ref_forward) {
-      sv = pic->ref_forward->get_sampler_view_planes(pic->ref_forward);
+      sv = pic->ref_forward->get_sampler_view_planes(pic->ref_forward, 0);
       for (j = 0; j < VL_MAX_PLANES; ++j)
          pipe_sampler_view_reference(&dec->ref_frames[0][j], sv[j]);
    } else
@@ -521,7 +521,7 @@ vl_mpeg12_set_picture_parameters(struct pipe_video_decoder *decoder,
          pipe_sampler_view_reference(&dec->ref_frames[0][j], NULL);
 
    if (pic->ref_backward) {
-      sv = pic->ref_backward->get_sampler_view_planes(pic->ref_backward);
+      sv = pic->ref_backward->get_sampler_view_planes(pic->ref_backward, 0);
       for (j = 0; j < VL_MAX_PLANES; ++j)
          pipe_sampler_view_reference(&dec->ref_frames[1][j], sv[j]);
    } else
@@ -762,7 +762,7 @@ vl_mpeg12_end_frame(struct pipe_video_decoder *decoder)
          vl_idct_flush(&buf->idct[i], buf->num_ycbcr_blocks[i]);
    }
 
-   mc_source_sv = dec->mc_source->get_sampler_view_planes(dec->mc_source);
+   mc_source_sv = dec->mc_source->get_sampler_view_planes(dec->mc_source, 0);
    for (i = 0, component = 0; i < VL_MAX_PLANES; ++i) {
       if (!dec->target_surfaces[i]) continue;
 

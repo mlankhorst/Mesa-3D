@@ -64,11 +64,6 @@ vlVdpVideoMixerCreate(VdpDevice device,
       return VDP_STATUS_RESOURCES;
 
    vmixer->device = dev;
-   vl_compositor_init(&vmixer->compositor, dev->context->pipe);
-
-   vl_csc_get_matrix(VL_CSC_COLOR_STANDARD_BT_601, NULL, true, vmixer->csc);
-   if (!debug_get_bool_option("G3DVL_NO_CSC", FALSE))
-      vl_compositor_set_csc_matrix(&vmixer->compositor, vmixer->csc);
 
    /*
     * TODO: Handle features
@@ -119,12 +114,21 @@ vlVdpVideoMixerCreate(VdpDevice device,
    vmixer->luma_key_max = 1.f;
    vmixer->noise_reduction_level = 0.f;
    vmixer->sharpness = 0.f;
+
+   ret = VDP_STATUS_RESOURCES;
+   if (!vl_compositor_init_video(&vmixer->compositor, dev->context->pipe, vmixer->chroma_format, vmixer->video_width, vmixer->video_height))
+      goto no_resources;
+
+   vl_csc_get_matrix(VL_CSC_COLOR_STANDARD_BT_601, NULL, true, vmixer->csc);
+   if (!debug_get_bool_option("G3DVL_NO_CSC", FALSE))
+      vl_compositor_set_csc_matrix(&vmixer->compositor, vmixer->csc);
+
    return VDP_STATUS_OK;
 
+no_resources:
 no_params:
    vlRemoveDataHTAB(*mixer);
 no_handle:
-   vl_compositor_cleanup(&vmixer->compositor);
    FREE(vmixer);
    return ret;
 }

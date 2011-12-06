@@ -33,6 +33,7 @@
 #include "util/u_memory.h"
 #include "util/u_draw.h"
 #include "util/u_surface.h"
+#include "util/u_sampler.h"
 
 #include "tgsi/tgsi_ureg.h"
 
@@ -103,7 +104,7 @@ create_frag_shader_video_buffer(struct vl_compositor *c, unsigned planes)
     */
    if (planes == 2) {
       ureg_TEX(shader, ureg_writemask(texel, TGSI_WRITEMASK_X), TGSI_TEXTURE_2D, tc, sampler[0]);
-      ureg_TEX(shader, ureg_writemask(texel, TGSI_WRITEMASK_Y|TGSI_WRITEMASK_Z), TGSI_TEXTURE_2D, tc, sampler[1]);
+      ureg_TEX(shader, ureg_writemask(texel, TGSI_WRITEMASK_YZ), TGSI_TEXTURE_2D, tc, sampler[1]);
    } else {
       for (i = 0; i < 3; ++i)
          ureg_TEX(shader, ureg_writemask(texel, TGSI_WRITEMASK_X << i), TGSI_TEXTURE_2D, tc, sampler[i]);
@@ -119,6 +120,96 @@ create_frag_shader_video_buffer(struct vl_compositor *c, unsigned planes)
    ureg_release_temporary(shader, texel);
    ureg_END(shader);
 
+   return ureg_create_shader_and_destroy(shader, c->pipe);
+}
+
+static struct ureg_dst
+calc_line(struct ureg_program *shader)
+{
+   struct ureg_dst tmp;
+   struct ureg_src pos;
+
+   tmp = ureg_DECL_temporary(shader);
+
+   pos = ureg_DECL_fs_input(shader, TGSI_SEMANTIC_POSITION, 0, TGSI_INTERPOLATE_LINEAR);
+
+   /*
+    * tmp.y = fraction(pos.y * .5) >= 0.5 ? 1 : 0
+    */
+   ureg_MUL(shader, ureg_writemask(tmp, TGSI_WRITEMASK_Y), pos, ureg_imm1f(shader, 0.5f));
+   ureg_FRC(shader, ureg_writemask(tmp, TGSI_WRITEMASK_Y), ureg_src(tmp));
+   ureg_SGE(shader, ureg_writemask(tmp, TGSI_WRITEMASK_Y), ureg_src(tmp), ureg_imm1f(shader, 0.5f));
+
+   return tmp;
+}
+
+/* Deinterlace NV12 or YV12 to a temporary video buffer
+ */
+
+static void *
+create_frag_shader_deint_planar_weave(struct vl_compositor *c, unsigned luma, unsigned comps)
+{
+   struct ureg_program *shader;
+   struct ureg_src tc, sampler[4];
+   struct ureg_dst field, fragment, swizcolor;
+   unsigned label, writemask;
+   if (luma)
+      writemask = TGSI_WRITEMASK_X;
+   else if (comps == 2)
+      writemask = TGSI_WRITEMASK_YZ;
+   else
+      writemask = TGSI_WRITEMASK_Y;
+
+   shader = ureg_create(TGSI_PROCESSOR_FRAGMENT);
+   if (!shader)
+      return false;
+
+   tc = ureg_DECL_fs_input(shader, TGSI_SEMANTIC_GENERIC, 1, TGSI_INTERPOLATE_LINEAR);
+   fragment = ureg_DECL_output(shader, TGSI_SEMANTIC_COLOR, 0);
+   sampler[0] = ureg_DECL_sampler(shader, 0);
+   sampler[1] = ureg_DECL_sampler(shader, 1);
+   if (!luma && comps == 1) {
+      sampler[2] = ureg_DECL_sampler(shader, 2);
+      sampler[3] = ureg_DECL_sampler(shader, 3);
+   }
+
+   field = calc_line(shader);
+   swizcolor = ureg_DECL_temporary(shader);
+
+   /* field.y = fraction(coord/2) >= .5 (from vl_mc.c)
+    *
+    * if (field.y)
+    *   swiz = sampler[bottom];
+    * else
+    *   swiz = sampler[top];
+    *
+    * if (LUMA)
+    *    color.x = swiz;
+    * else
+    *    color.xy = swiz.yz;
+    */
+
+   ureg_IF(shader, ureg_scalar(ureg_src(field), TGSI_SWIZZLE_Y), &label);
+      ureg_TEX(shader, ureg_writemask(swizcolor, writemask), TGSI_TEXTURE_2D, tc, sampler[1]);
+      if (!luma && comps == 1)
+         ureg_TEX(shader, ureg_writemask(swizcolor, TGSI_WRITEMASK_Z), TGSI_TEXTURE_2D, tc, sampler[3]);
+      ureg_fixup_label(shader, label, ureg_get_instruction_number(shader));
+   ureg_ELSE(shader, &label);
+      ureg_TEX(shader, ureg_writemask(swizcolor, writemask), TGSI_TEXTURE_2D, tc, sampler[0]);
+      if (!luma && comps == 1)
+         ureg_TEX(shader, ureg_writemask(swizcolor, TGSI_WRITEMASK_Z), TGSI_TEXTURE_2D, tc, sampler[2]);
+      ureg_fixup_label(shader, label, ureg_get_instruction_number(shader));
+   ureg_ENDIF(shader);
+
+   if (luma)
+      ureg_MOV(shader, ureg_writemask(fragment, writemask), ureg_src(swizcolor));
+   else
+      ureg_MOV(shader, ureg_writemask(fragment, TGSI_WRITEMASK_XY),
+               ureg_swizzle(ureg_src(swizcolor), TGSI_SWIZZLE_Y, TGSI_SWIZZLE_Z, TGSI_SWIZZLE_Z, TGSI_SWIZZLE_Z));
+
+   ureg_release_temporary(shader, swizcolor);
+   ureg_release_temporary(shader, field);
+   ureg_END(shader);
    return ureg_create_shader_and_destroy(shader, c->pipe);
 }
 
@@ -207,17 +298,6 @@ init_shaders(struct vl_compositor *c)
       return false;
    }
 
-   c->fs_video_buffer2 = create_frag_shader_video_buffer(c, 2);
-   if (!c->fs_video_buffer2) {
-      debug_printf("Unable to create YCbCr-to-RGB fragment shader for 2 planes.\n");
-      return false;
-   }
-   c->fs_video_buffer3 = create_frag_shader_video_buffer(c, 3);
-   if (!c->fs_video_buffer3) {
-      debug_printf("Unable to create YCbCr-to-RGB fragment shader for 3 planes.\n");
-      return false;
-   }
-
    c->fs_palette.yuv = create_frag_shader_palette(c, true);
    if (!c->fs_palette.yuv) {
       debug_printf("Unable to create YUV-Palette-to-RGB fragment shader.\n");
@@ -244,8 +324,6 @@ static void cleanup_shaders(struct vl_compositor *c)
    assert(c);
 
    c->pipe->delete_vs_state(c->pipe, c->vs);
-   c->pipe->delete_fs_state(c->pipe, c->fs_video_buffer2);
-   c->pipe->delete_fs_state(c->pipe, c->fs_video_buffer3);
    c->pipe->delete_fs_state(c->pipe, c->fs_palette.yuv);
    c->pipe->delete_fs_state(c->pipe, c->fs_palette.rgb);
    c->pipe->delete_fs_state(c->pipe, c->fs_rgba);
@@ -625,16 +703,37 @@ vl_compositor_clear_layers(struct vl_compositor *c)
    }
 }
 
+static void
+cleanup_video(struct vl_compositor *c)
+{
+   unsigned i;
+   for (i = 0; i < 3; ++i) {
+      if (!c->fs_weave[i])
+         continue;
+      c->pipe->delete_fs_state(c->pipe, c->fs_weave[i]);
+   }
+   if (c->fs_video_buffer2)
+      c->pipe->delete_fs_state(c->pipe, c->fs_video_buffer2);
+   if (c->fs_video_buffer3)
+      c->pipe->delete_fs_state(c->pipe, c->fs_video_buffer3);
+   pipe_surface_reference(&c->video_surf[0], NULL);
+   pipe_surface_reference(&c->video_surf[1], NULL);
+   pipe_sampler_view_reference(&c->video_sv[0], NULL);
+   pipe_sampler_view_reference(&c->video_sv[1], NULL);
+   pipe_resource_reference(&c->video_y, NULL);
+   pipe_resource_reference(&c->video_cbcr, NULL);
+}
+
 void
 vl_compositor_cleanup(struct vl_compositor *c)
 {
    assert(c);
 
    vl_compositor_clear_layers(c);
-
    cleanup_buffers(c);
    cleanup_shaders(c);
    cleanup_pipe_state(c);
+   cleanup_video(c);
 }
 
 void
@@ -669,6 +768,94 @@ vl_compositor_set_layer_blend(struct vl_compositor *c,
    c->layers[layer].blend = blend;
 }
 
+
+static void gen_vertex_data_video(struct vl_compositor *c) {
+   struct vertex4f *vb;
+   struct pipe_transfer *buf_transfer;
+   vb = pipe_buffer_map(c->pipe, c->vertex_buf.buffer,
+                        PIPE_TRANSFER_WRITE | PIPE_TRANSFER_DISCARD | PIPE_TRANSFER_DONTBLOCK,
+                        &buf_transfer);
+
+   if (!vb) {
+      // If buffer is still locked from last draw create a new one
+      create_vertex_buffer(c);
+      vb = pipe_buffer_map(c->pipe, c->vertex_buf.buffer,
+                           PIPE_TRANSFER_WRITE | PIPE_TRANSFER_DISCARD,
+                           &buf_transfer);
+   }
+   vb[0].x = 0.f;
+   vb[0].y = 0.f;
+   vb[0].z = 0.f;
+   vb[0].w = 0.f;
+
+   vb[1].x = 0.f;
+   vb[1].y = 65535.f;
+   vb[1].z = 0.f;
+   vb[1].w = 65535.f;
+
+   vb[2].x = 65535.f;
+   vb[2].y = 0.f;
+   vb[2].z = 65535.f;
+   vb[2].w = 0.f;
+   pipe_buffer_unmap(c->pipe, buf_transfer);
+}
+
+static void
+vl_compositor_render_video(struct vl_compositor *c,
+                           struct pipe_video_buffer *buffer)
+{
+   struct pipe_sampler_view **sv;
+   struct pipe_scissor_state scissor;
+   sv = buffer->get_sampler_view_planes(buffer, 1);
+   void *samplers[4];
+   unsigned i;
+   for (i = 0; i < 4; ++i)
+      samplers[i] = c->sampler_nearest;
+
+   assert(c);
+   gen_vertex_data_video(c);
+   for (i = 0; i < 2; ++i) {
+      struct pipe_surface *dst_surface = c->video_surf[i];
+      assert(dst_surface);
+      unsigned num_sampler_views;
+      if (i == 0)
+         num_sampler_views = 2;
+      else
+         num_sampler_views = 2 * (1 + !!sv[4]);
+
+      c->fb_state.width = dst_surface->width;
+      c->fb_state.height = dst_surface->height;
+      c->fb_state.cbufs[0] = dst_surface;
+
+      c->viewport.scale[0] = sv[2*i]->texture->width0;
+      c->viewport.scale[1] = sv[2*i]->texture->height0 * 2;
+      c->viewport.translate[0] = 0;
+      c->viewport.translate[1] = 0;
+
+      scissor.minx = 0;
+      scissor.miny = 0;
+      scissor.maxx = dst_surface->width;
+      scissor.maxy = dst_surface->height;
+
+      c->pipe->set_scissor_state(c->pipe, &scissor);
+      c->pipe->set_framebuffer_state(c->pipe, &c->fb_state);
+      c->pipe->set_viewport_state(c->pipe, &c->viewport);
+      c->pipe->bind_vs_state(c->pipe, c->vs);
+      c->pipe->set_vertex_buffers(c->pipe, 1, &c->vertex_buf);
+      c->pipe->bind_vertex_elements_state(c->pipe, c->vertex_elems_state);
+      c->pipe->bind_rasterizer_state(c->pipe, c->rast);
+
+      c->pipe->bind_blend_state(c->pipe, c->blend_clear);
+      if (i == 0)
+         c->pipe->bind_fs_state(c->pipe, c->fs_weave[0]);
+      else
+         c->pipe->bind_fs_state(c->pipe, c->fs_weave[1 + !!sv[4]]);
+      c->pipe->bind_fragment_sampler_states(c->pipe, num_sampler_views, samplers);
+      c->pipe->set_fragment_sampler_views(c->pipe, num_sampler_views, &sv[2*i]);
+      util_draw_arrays(c->pipe, PIPE_PRIM_TRIANGLES, 0, 3);
+   }
+}
+
 void
 vl_compositor_set_buffer_layer(struct vl_compositor *c,
                                unsigned layer,
@@ -677,15 +864,28 @@ vl_compositor_set_buffer_layer(struct vl_compositor *c,
                                struct pipe_video_rect *dst_rect)
 {
    struct pipe_sampler_view **sampler_views;
+   struct pipe_video_rect rect;
    unsigned i;
 
    assert(c && buffer);
+   assert(c->video_w == buffer->width && c->video_h == buffer->height);
 
    assert(layer < VL_COMPOSITOR_MAX_LAYERS);
 
    c->used_layers |= 1 << layer;
 
-   sampler_views = buffer->get_sampler_view_planes(buffer);
+   sampler_views = buffer->get_sampler_view_planes(buffer, 0);
+   if (!sampler_views) {
+      sampler_views = c->video_sv;
+      vl_compositor_render_video(c, buffer);
+      assert(!sampler_views[2]);
+   }
+   if (!src_rect) {
+      src_rect = &rect;
+      rect.x = rect.y = 0;
+      rect.w = buffer->width;
+      rect.h = buffer->height;
+   }
    for (i = 0; i < 3; ++i) {
       c->layers[layer].samplers[i] = c->sampler_linear;
       pipe_sampler_view_reference(&c->layers[layer].sampler_views[i], sampler_views[i]);
@@ -845,4 +1045,89 @@ vl_compositor_init(struct vl_compositor *c, struct pipe_context *pipe)
    c->clear_color.f[2] = c->clear_color.f[3] = 0.0f;
 
    return true;
+}
+
+bool
+vl_compositor_init_video(struct vl_compositor *c, struct pipe_context *pipe,
+                         enum pipe_video_chroma_format chroma, unsigned w, unsigned h)
+{
+   struct pipe_resource templ;
+   struct pipe_sampler_view sv_templ;
+   struct pipe_surface surf_templ;
+   if (!vl_compositor_init(c, pipe))
+      return false;
+   c->video_w = w;
+   c->video_h = h;
+
+   c->fs_video_buffer2 = create_frag_shader_video_buffer(c, 2);
+   if (!c->fs_video_buffer2) {
+      debug_printf("Unable to create YCbCr-to-RGB fragment shader for 2 planes.\n");
+      goto fail;
+   }
+   c->fs_video_buffer3 = create_frag_shader_video_buffer(c, 3);
+   if (!c->fs_video_buffer3) {
+      debug_printf("Unable to create YCbCr-to-RGB fragment shader for 3 planes.\n");
+      goto fail;
+   }
+   c->fs_weave[0] = create_frag_shader_deint_planar_weave(c, 1, 1);
+   c->fs_weave[1] = create_frag_shader_deint_planar_weave(c, 0, 2); // CbCr woven
+   c->fs_weave[2] = create_frag_shader_deint_planar_weave(c, 0, 1); // Cb, Cr separate
+   if (!c->fs_weave[0] || !c->fs_weave[1] || !c->fs_weave[2]) {
+      debug_printf("Unable to create weave fragment shaders.\n");
+      goto fail;
+   }
+   memset(&templ, 0, sizeof(templ));
+   templ.target = PIPE_TEXTURE_2D;
+   templ.format = PIPE_FORMAT_R8_UNORM;
+   templ.width0 = w;
+   templ.height0 = h;
+   templ.depth0 = 1;
+   templ.array_size = 1;
+   templ.bind = PIPE_BIND_SAMPLER_VIEW | PIPE_BIND_RENDER_TARGET;
+   templ.usage = PIPE_USAGE_STATIC;
+   c->video_y = pipe->screen->resource_create(pipe->screen, &templ);
+   if (!c->video_y) {
+      debug_printf("Could not create deinterlaced temp frame for luma\n");
+      goto fail;
+   }
+   if (chroma != PIPE_VIDEO_CHROMA_FORMAT_444)
+      templ.height0 /= 2;
+   if (chroma == PIPE_VIDEO_CHROMA_FORMAT_420)
+      templ.width0 /= 2;
+   templ.format = PIPE_FORMAT_R8G8_UNORM;
+   c->video_cbcr = pipe->screen->resource_create(pipe->screen, &templ);
+   if (!c->video_cbcr) {
+      debug_printf("Could not create deinterlaced temp frame for chroma\n");
+      goto fail;
+   }
+   memset(&sv_templ, 0, sizeof(sv_templ));
+   u_sampler_view_default_template(&sv_templ, c->video_y, c->video_y->format);
+   sv_templ.swizzle_a = sv_templ.swizzle_b = sv_templ.swizzle_g = sv_templ.swizzle_r;
+   c->video_sv[0] = pipe->create_sampler_view(pipe, c->video_y, &sv_templ);
+
+   memset(&sv_templ, 0, sizeof(sv_templ));
+   u_sampler_view_default_template(&sv_templ, c->video_cbcr, c->video_cbcr->format);
+   sv_templ.swizzle_b = PIPE_SWIZZLE_GREEN;
+   sv_templ.swizzle_g = PIPE_SWIZZLE_RED;
+   c->video_sv[1] = pipe->create_sampler_view(pipe, c->video_cbcr, &sv_templ);
+   if (!c->video_sv[0] || !c->video_sv[1]) {
+      debug_printf("Could not create temp video sampler views\n");
+      goto fail;
+   }
+   memset(&surf_templ, 0, sizeof(surf_templ));
+   surf_templ.usage = PIPE_BIND_SAMPLER_VIEW | PIPE_BIND_RENDER_TARGET;
+   surf_templ.format = c->video_y->format;
+   c->video_surf[0] = pipe->create_surface(pipe, c->video_y, &surf_templ);
+   surf_templ.format = c->video_cbcr->format;
+   c->video_surf[1] = pipe->create_surface(pipe, c->video_cbcr, &surf_templ);
+   if (!c->video_surf[0] || !c->video_surf[1]) {
+      debug_printf("Could not create temp video surface\n");
+      goto fail;
+   }
+
+   return true;
+
+fail:
+   vl_compositor_cleanup(c);
+   return false;
 }

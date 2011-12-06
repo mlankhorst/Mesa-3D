@@ -104,7 +104,7 @@ struct pipe_video_buffer
    /**
     * get a individual sampler view for each plane
     */
-   struct pipe_sampler_view **(*get_sampler_view_planes)(struct pipe_video_buffer *buffer);
+   struct pipe_sampler_view **(*get_sampler_view_planes)(struct pipe_video_buffer *buffer, unsigned interlaced);
 
    /**
     * get a individual surfaces for each plane

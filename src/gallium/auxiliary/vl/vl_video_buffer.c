@@ -116,7 +116,7 @@ vl_video_buffer_destroy(struct pipe_video_buffer *buffer)
 }
 
 static struct pipe_sampler_view **
-vl_video_buffer_sampler_view_planes(struct pipe_video_buffer *buffer)
+vl_video_buffer_sampler_view_planes(struct pipe_video_buffer *buffer, unsigned interlaced)
 {
    struct vl_video_buffer *buf = (struct vl_video_buffer *)buffer;
    struct pipe_sampler_view sv_templ;
@@ -124,6 +124,8 @@ vl_video_buffer_sampler_view_planes(struct pipe_video_buffer *buffer)
    unsigned i;
 
    assert(buf);
+   if (interlaced)
+      return NULL;
 
    pipe = buf->base.context;
 
