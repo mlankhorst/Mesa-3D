@@ -405,7 +405,8 @@ nvc0_screen_create(struct nouveau_device *dev)
 
    nvc0_screen_init_resource_functions(pscreen);
 
-   nouveau_screen_init_vdec(&screen->base);
+   screen->base.base.get_video_param = nvc0_screen_get_video_param;
+   screen->base.base.is_video_format_supported = vl_video_buffer_is_format_supported;
 
    ret = nouveau_bo_new(dev, NOUVEAU_BO_GART | NOUVEAU_BO_MAP, 0, 4096,
                         &screen->fence.bo);
