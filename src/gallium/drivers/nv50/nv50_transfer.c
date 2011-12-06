@@ -23,7 +23,7 @@ nv50_m2mf_rect_setup(struct nv50_m2mf_rect *rect,
 
    rect->bo = mt->base.bo;
    rect->domain = mt->base.domain;
-   rect->base = mt->level[l].offset;
+   rect->base = mt->level[l].offset + mt->base.offset;
    rect->pitch = mt->level[l].pitch;
    if (util_format_is_plain(res->format)) {
       rect->width = w << mt->ms_x;
