@@ -868,7 +868,7 @@ vl_compositor_set_buffer_layer(struct vl_compositor *c,
    unsigned i;
 
    assert(c && buffer);
-   assert(c->video_w == buffer->width && c->video_h == buffer->height);
+   assert(c->video_w <= buffer->width && c->video_h <= buffer->height);
 
    assert(layer < VL_COMPOSITOR_MAX_LAYERS);
 
@@ -883,8 +883,8 @@ vl_compositor_set_buffer_layer(struct vl_compositor *c,
    if (!src_rect) {
       src_rect = &rect;
       rect.x = rect.y = 0;
-      rect.w = buffer->width;
-      rect.h = buffer->height;
+      rect.w = c->video_w;
+      rect.h = c->video_h;
    }
    for (i = 0; i < 3; ++i) {
       c->layers[layer].samplers[i] = c->sampler_linear;

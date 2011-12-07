@@ -155,7 +155,7 @@ vl_compositor_set_layer_blend(struct vl_compositor *compositor,
  */
 void
 vl_compositor_set_buffer_layer(struct vl_compositor *compositor,
-                               unsigned layer,
+                               unsigned layer, enum pipe_video_field field,
                                struct pipe_video_buffer *buffer,
                                struct pipe_video_rect *src_rect,
                                struct pipe_video_rect *dst_rect);
