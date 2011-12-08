@@ -857,29 +857,40 @@ vl_compositor_render_video(struct vl_compositor *c,
 }
 
 void
-vl_compositor_set_buffer_layer(struct vl_compositor *c,
-                               unsigned layer,
+vl_compositor_set_buffer_layer(struct vl_compositor *c, unsigned layer,
+                               enum pipe_video_picture_structure field,
                                struct pipe_video_buffer *buffer,
                                struct pipe_video_rect *src_rect,
-                               struct pipe_video_rect *dst_rect)
+                               struct pipe_video_rect *dst_rect,
+                               unsigned past_count,
+                               struct pipe_video_buffer **past,
+                               unsigned future_count,
+                               struct pipe_video_buffer **future)
 {
-   struct pipe_sampler_view **sampler_views;
+   struct pipe_sampler_view **sampler_views, *sv[2][3];
    struct pipe_video_rect rect;
    unsigned i;
 
    assert(c && buffer);
    assert(c->video_w <= buffer->width && c->video_h <= buffer->height);
-
    assert(layer < VL_COMPOSITOR_MAX_LAYERS);
 
-   c->used_layers |= 1 << layer;
-
-   sampler_views = buffer->get_sampler_view_planes(buffer, 0);
-   if (!sampler_views) {
-      sampler_views = c->video_sv;
-      vl_compositor_render_video(c, buffer);
-      assert(!sampler_views[2]);
+   if (field == PIPE_VIDEO_PICTURE_STRUCTURE_FRAME) {
+      sampler_views = buffer->get_sampler_view_planes(buffer, 0);
+      if (!sampler_views) {
+         sampler_views = c->video_sv;
+         vl_compositor_render_video(c, buffer);
+         assert(!sampler_views[2]);
+      }
+   } else {
+      int top = field == PIPE_VIDEO_PICTURE_STRUCTURE_FIELD_TOP;
+      sampler_views = buffer->get_sampler_view_planes(buffer, 1);
+      assert(sampler_views);
+      // NO GAMES!
+      assert(0);
    }
+
+   c->used_layers |= 1 << layer;
    if (!src_rect) {
       src_rect = &rect;
       rect.x = rect.y = 0;

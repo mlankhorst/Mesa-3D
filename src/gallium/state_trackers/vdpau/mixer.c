@@ -180,6 +180,18 @@ vlVdpVideoMixerSetFeatureEnables(VdpVideoMixer mixer,
    return VDP_STATUS_OK;
 }
 
+static VdpStatus
+vl_check_video_surface(vlVdpVideoMixer *vmixer, vlVdpSurface *surf) {
+   if (surf->device != vmixer->device)
+      return VDP_STATUS_HANDLE_DEVICE_MISMATCH;
+
+   if (vmixer->video_width > surf->video_buffer->width ||
+       vmixer->video_height > surf->video_buffer->height ||
+       vmixer->chroma_format != surf->video_buffer->chroma_format)
+      return VDP_STATUS_INVALID_SIZE;
+   return VDP_STATUS_OK;
+}
+
 /**
  * Perform a video post-processing and compositing operation.
  */
@@ -199,12 +211,29 @@ VdpStatus vlVdpVideoMixerRender(VdpVideoMixer mixer,
                                 uint32_t layer_count,
                                 VdpLayer const *layers)
 {
+   struct pipe_video_buffer *future[video_surface_future_count];
+   struct pipe_video_buffer *past[video_surface_past_count];
    struct pipe_video_rect src_rect, dst_rect, dst_clip;
-   unsigned layer = 0;
+   VdpStatus ret;
+   enum pipe_video_picture_structure ps;
+   switch (current_picture_structure) {
+   case VDP_VIDEO_MIXER_PICTURE_STRUCTURE_TOP_FIELD:
+      ps = PIPE_VIDEO_PICTURE_STRUCTURE_FIELD_TOP;
+      break;
+   case VDP_VIDEO_MIXER_PICTURE_STRUCTURE_BOTTOM_FIELD:
+      ps = PIPE_VIDEO_PICTURE_STRUCTURE_FIELD_BOTTOM;
+      break;
+   case VDP_VIDEO_MIXER_PICTURE_STRUCTURE_FRAME:
+      ps = PIPE_VIDEO_PICTURE_STRUCTURE_FRAME;
+      break;
+   default:
+      return VDP_STATUS_INVALID_VIDEO_MIXER_PICTURE_STRUCTURE;
+   }
 
    vlVdpVideoMixer *vmixer;
-   vlVdpSurface *surf;
+   vlVdpSurface *surf, *tmp;
    vlVdpOutputSurface *dst;
+   unsigned i, layer = 0;
 
    vmixer = vlGetDataHTAB(mixer);
    if (!vmixer)
@@ -214,20 +243,36 @@ VdpStatus vlVdpVideoMixerRender(VdpVideoMixer mixer,
    if (!surf)
       return VDP_STATUS_INVALID_HANDLE;
 
-   if (surf->device != vmixer->device)
-      return VDP_STATUS_HANDLE_DEVICE_MISMATCH;
-
-   if (vmixer->video_width > surf->video_buffer->width ||
-       vmixer->video_height > surf->video_buffer->height ||
-       vmixer->chroma_format != surf->video_buffer->chroma_format)
-      return VDP_STATUS_INVALID_SIZE;
-
    if (layer_count > vmixer->max_layers)
       return VDP_STATUS_INVALID_VALUE;
 
    dst = vlGetDataHTAB(destination_surface);
    if (!dst)
       return VDP_STATUS_INVALID_HANDLE;
+   for (i = 0; i < video_surface_past_count; ++i) {
+      if (video_surface_past[i] != VDP_INVALID_HANDLE) {
+         tmp = vlGetDataHTAB(video_surface_past[i]);
+         if (!tmp)
+            return VDP_STATUS_INVALID_HANDLE;
+         ret = vl_check_video_surface(vmixer, tmp);
+         if (ret)
+            return ret;
+         past[i] = tmp->video_buffer;
+      } else
+         past[i] = NULL;
+   }
+   for (i = 0; i < video_surface_future_count; ++i) {
+      if (video_surface_future[i] != VDP_INVALID_HANDLE) {
+         tmp = vlGetDataHTAB(video_surface_future[i]);
+         if (!tmp)
+            return VDP_STATUS_INVALID_HANDLE;
+         ret = vl_check_video_surface(vmixer, tmp);
+         if (ret)
+            return ret;
+         future[i] = tmp->video_buffer;
+      } else
+         future[i] = NULL;
+   }
 
    if (background_surface != VDP_INVALID_HANDLE) {
       vlVdpOutputSurface *bg = vlGetDataHTAB(background_surface);
@@ -236,10 +281,12 @@ VdpStatus vlVdpVideoMixerRender(VdpVideoMixer mixer,
       vl_compositor_set_rgba_layer(&vmixer->compositor, layer++, bg->sampler_view,
                                    RectToPipe(background_source_rect, &src_rect), NULL);
    }
-
    vl_compositor_clear_layers(&vmixer->compositor);
-   vl_compositor_set_buffer_layer(&vmixer->compositor, layer++, surf->video_buffer,
-                                  RectToPipe(video_source_rect, &src_rect), NULL);
+   vl_compositor_set_buffer_layer(&vmixer->compositor, layer, ps,
+                                  surf->video_buffer,
+                                  RectToPipe(video_source_rect, &src_rect), NULL,
+                                  video_surface_past_count, past,
+                                  video_surface_future_count, future);
    vl_compositor_render(&vmixer->compositor, dst->surface,
                         RectToPipe(destination_video_rect, &dst_rect),
                         RectToPipe(destination_rect, &dst_clip),

@@ -154,11 +154,15 @@ vl_compositor_set_layer_blend(struct vl_compositor *compositor,
  * set a video buffer as a layer to render
  */
 void
-vl_compositor_set_buffer_layer(struct vl_compositor *compositor,
-                               unsigned layer, enum pipe_video_field field,
+vl_compositor_set_buffer_layer(struct vl_compositor *c, unsigned layer,
+                               enum pipe_video_picture_structure field,
                                struct pipe_video_buffer *buffer,
                                struct pipe_video_rect *src_rect,
-                               struct pipe_video_rect *dst_rect);
+                               struct pipe_video_rect *dst_rect,
+                               unsigned past_count,
+                               struct pipe_video_buffer **past,
+                               unsigned future_count,
+                               struct pipe_video_buffer **future);
 
 /**
  * set a paletted sampler as a layer to render

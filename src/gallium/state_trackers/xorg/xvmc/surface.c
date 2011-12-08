@@ -276,6 +276,7 @@ Status XvMCPutSurface(Display *dpy, XvMCSurface *surface, Drawable drawable,
    XvMCContextPrivate *context_priv;
    XvMCSubpicturePrivate *subpicture_priv;
    XvMCContext *context;
+   enum pipe_video_picture_structure ps;
    struct pipe_video_rect src_rect = {srcx, srcy, srcw, srch};
    struct pipe_video_rect dst_rect = {destx, desty, destw, desth};
 
@@ -291,7 +292,6 @@ Status XvMCPutSurface(Display *dpy, XvMCSurface *surface, Drawable drawable,
    context_priv = context->privData;
    context_priv->decoder->flush(context_priv->decoder);
 
-   assert(flags == XVMC_TOP_FIELD || flags == XVMC_BOTTOM_FIELD || flags == XVMC_FRAME_PICTURE);
    assert(srcx + srcw - 1 < surface->width);
    assert(srcy + srch - 1 < surface->height);
 
@@ -325,7 +325,20 @@ Status XvMCPutSurface(Display *dpy, XvMCSurface *surface, Drawable drawable,
     */
 
    vl_compositor_clear_layers(compositor);
-   vl_compositor_set_buffer_layer(compositor, 0, surface_priv->video_buffer, &src_rect, NULL);
+   switch (flags) {
+   case XVMC_TOP_FIELD:
+      ps = PIPE_VIDEO_PICTURE_STRUCTURE_FIELD_TOP;
+      break;
+   case XVMC_BOTTOM_FIELD:
+      ps = PIPE_VIDEO_PICTURE_STRUCTURE_FIELD_BOTTOM;
+      break;
+   case XVMC_FRAME_PICTURE:
+      ps = PIPE_VIDEO_PICTURE_STRUCTURE_FRAME;
+      break;
+   default:
+      assert(0);
+   }
+   vl_compositor_set_buffer_layer(compositor, 0, ps, surface_priv->video_buffer, &src_rect, NULL, 0, NULL, 0, NULL);
 
    if (subpicture_priv) {
       XVMC_MSG(XVMC_TRACE, "[XvMC] Surface %p has subpicture %p.\n", surface, surface_priv->subpicture);

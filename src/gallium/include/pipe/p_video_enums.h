@@ -70,5 +70,11 @@ enum pipe_video_entrypoint
    PIPE_VIDEO_ENTRYPOINT_MC
 };
 
+enum pipe_video_picture_structure
+{
+   PIPE_VIDEO_PICTURE_STRUCTURE_FIELD_TOP,
+   PIPE_VIDEO_PICTURE_STRUCTURE_FIELD_BOTTOM,
+   PIPE_VIDEO_PICTURE_STRUCTURE_FRAME
+};
 
 #endif /* PIPE_VIDEO_ENUMS_H */
