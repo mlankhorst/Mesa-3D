@@ -66,9 +66,9 @@ struct vl_compositor
    struct pipe_viewport_state viewport;
    struct pipe_scissor_state scissor;
    struct pipe_vertex_buffer vertex_buf;
-   struct pipe_resource *csc_matrix, *video_res[3];
-   struct pipe_sampler_view *video_sv[3];
-   struct pipe_surface *video_surf[3];
+   struct pipe_resource *csc_matrix, *video_res[4];
+   struct pipe_sampler_view *video_sv[4];
+   struct pipe_surface *video_surf[4];
 
    void *sampler_linear;
    void *sampler_nearest;
@@ -79,7 +79,7 @@ struct vl_compositor
 
    void *vs;
    void *fs_video_buffer2, *fs_video_buffer3;
-   void *fs_weave[5];
+   void *fs_weave[6];
    void *fs_rgba;
 
    struct {
