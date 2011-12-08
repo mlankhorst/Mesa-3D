@@ -1257,7 +1257,7 @@ nvc0_video_buffer_create(struct pipe_context *pipe,
    templ.usage = PIPE_USAGE_STATIC;
    templ.format = PIPE_FORMAT_R8_UNORM;
    templ.width0 = mb(width)*16;
-   templ.height0 = mb_half(height)*16;
+   templ.height0 = nvc0_video_align(height) / 2;
    templ.flags = NVC0_RESOURCE_FLAG_VIDEO;
    for (i = 0; i < 2; ++i) {
       buffer->resources[i] = pipe->screen->resource_create(pipe->screen, &templ);
@@ -1266,7 +1266,7 @@ nvc0_video_buffer_create(struct pipe_context *pipe,
    }
    templ.format = PIPE_FORMAT_R8G8_UNORM;
    templ.width0 /= 2;
-   templ.height0 = nvc0_video_align(height)/4;
+   templ.height0 /= 2;
    for (; i < 4; ++i) {
       buffer->resources[i] = pipe->screen->resource_create(pipe->screen, &templ);
       if (!buffer->resources[i])

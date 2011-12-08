@@ -66,9 +66,9 @@ struct vl_compositor
    struct pipe_viewport_state viewport;
    struct pipe_scissor_state scissor;
    struct pipe_vertex_buffer vertex_buf;
-   struct pipe_resource *csc_matrix, *video_y, *video_cbcr;
-   struct pipe_sampler_view *video_sv[3]; // Last is deliberately null
-   struct pipe_surface *video_surf[2];
+   struct pipe_resource *csc_matrix, *video_res[3];
+   struct pipe_sampler_view *video_sv[3];
+   struct pipe_surface *video_surf[3];
 
    void *sampler_linear;
    void *sampler_nearest;
@@ -79,7 +79,7 @@ struct vl_compositor
 
    void *vs;
    void *fs_video_buffer2, *fs_video_buffer3;
-   void *fs_weave[3];
+   void *fs_weave[5];
    void *fs_rgba;
 
    struct {
@@ -89,6 +89,7 @@ struct vl_compositor
 
    union pipe_color_union clear_color;
 
+   enum pipe_video_chroma_format chroma;
    unsigned video_w, video_h;
    unsigned used_layers:VL_COMPOSITOR_MAX_LAYERS;
    struct vl_compositor_layer layers[VL_COMPOSITOR_MAX_LAYERS];
