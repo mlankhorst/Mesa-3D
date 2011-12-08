@@ -198,6 +198,9 @@ create_frag_shader_weave(struct vl_compositor *c, unsigned luma, unsigned interl
    {
       struct ureg_dst adjtc = ureg_DECL_temporary(shader);
       if (!nearest) {
+         /* -2.0 / c->video_h (1 pixel up, chroma = half height, full height wouldn't need this)
+          * + .5 / c->video_h (.25 pixel down, since interlaced first pixel = .75 first
+          */
          ureg_MOV(shader, ureg_writemask(adjtc, TGSI_WRITEMASK_X), tc);
          ureg_SUB(shader, ureg_writemask(adjtc, TGSI_WRITEMASK_Y), ureg_scalar(tc, TGSI_SWIZZLE_Y),
                   ureg_imm1f(shader, 1.5f / c->video_h));
@@ -833,7 +836,7 @@ vl_compositor_render_video(struct vl_compositor *c,
    void *samplers[4];
    unsigned i;
    for (i = 0; i < 4; ++i) {
-      if (!interlaced || i < 2)
+      if (!interlaced || i < 2 || c->chroma == PIPE_VIDEO_CHROMA_FORMAT_444)
          samplers[i] = c->sampler_nearest;
       else {
          samplers[i] = c->sampler_linear;
