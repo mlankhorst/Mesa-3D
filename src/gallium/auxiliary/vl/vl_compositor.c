@@ -46,6 +46,9 @@
 
 typedef float csc_matrix[16];
 
+/* Set to 1 to run a contour shader */
+#define DEBUG_CONTOUR 0
+
 static void *
 create_vert_shader(struct vl_compositor *c)
 {
@@ -908,7 +911,6 @@ static void gen_vertex_data_video(struct vl_compositor *c) {
    pipe_buffer_unmap(c->pipe, buf_transfer);
 }
 
-#ifdef DEBUG_CONTOUR
 static void
 vl_compositor_render_sobel(struct vl_compositor *c)
 {
@@ -917,7 +919,6 @@ vl_compositor_render_sobel(struct vl_compositor *c)
    struct pipe_surface *dst_surface;
    void *fs;
 
-   unsigned i;
    assert(c);
 
    gen_vertex_data_video(c);
@@ -953,7 +954,6 @@ vl_compositor_render_sobel(struct vl_compositor *c)
    c->pipe->set_fragment_sampler_views(c->pipe, 1, &sv);
    util_draw_arrays(c->pipe, PIPE_PRIM_TRIANGLES, 0, 3);
 }
-#endif
 
 static void
 vl_compositor_render_video(struct vl_compositor *c,
@@ -1051,10 +1051,10 @@ vl_compositor_set_buffer_layer(struct vl_compositor *c, unsigned layer,
          sampler_views = buffer->get_sampler_view_planes(buffer, 1);
          vl_compositor_render_video(c, sampler_views, 0);
          sv[0] = c->video_sv[0];
-#ifdef DEBUG_CONTOUR
-         sv[0] = c->video_sv[3];
-         vl_compositor_render_sobel(c);
-#endif
+         if (DEBUG_CONTOUR) {
+            sv[0] = c->video_sv[3];
+            vl_compositor_render_sobel(c);
+         }
          sv[1] = c->video_sv[2];
          sv[2] = NULL;
          sampler_views = sv;
@@ -1283,8 +1283,9 @@ vl_compositor_init_video(struct vl_compositor *c, struct pipe_context *pipe,
    c->fs_weave[2] = create_frag_shader_weave(c, 0, 1, 1); // Cb, Cr separate interlaced
    c->fs_weave[3] = create_frag_shader_weave(c, 0, 0, 2); // CbCr woven progressive
    c->fs_weave[4] = create_frag_shader_weave(c, 0, 0, 1); // Cb, Cr separate progressive
-   c->fs_weave[5] = create_frag_shader_sobel(c);
-   for (i = 0; i < Elements(c->fs_weave); ++i) {
+   if (DEBUG_CONTOUR)
+      c->fs_weave[5] = create_frag_shader_sobel(c);
+   for (i = 0; i < Elements(c->fs_weave) - DEBUG_CONTOUR; ++i) {
       if (!c->fs_weave[i]) {
          debug_printf("Unable to create weave fragment shaders.\n");
          goto fail;
@@ -1322,13 +1323,15 @@ vl_compositor_init_video(struct vl_compositor *c, struct pipe_context *pipe,
       goto fail;
    }
 
-   c->video_res[3] = pipe->screen->resource_create(pipe->screen, c->video_res[0]);
-   if (!c->video_res[3]) {
-      debug_printf("Could not create sobel temp frame for luma\n");
-      goto fail;
+   if (DEBUG_CONTOUR) {
+      c->video_res[3] = pipe->screen->resource_create(pipe->screen, c->video_res[0]);
+      if (!c->video_res[3]) {
+         debug_printf("Could not create sobel temp frame for luma\n");
+         goto fail;
+      }
    }
 
-   for (i = 0; i < Elements(c->video_res); ++i) {
+   for (i = 0; i < Elements(c->video_res) - !DEBUG_CONTOUR; ++i) {
       struct pipe_sampler_view sv_templ;
       struct pipe_surface surf_templ;
 
