@@ -655,6 +655,8 @@ nvc0_decoder_setup_ppp(struct nvc0_decoder *dec, struct nvc0_video_buffer *targe
    OUT_RING(chan, in_addr + y2); // 70c
    OUT_RING(chan, in_addr + cbcr); // 710
    OUT_RING(chan, in_addr + cbcr2); // 714
+   assert(target->resources[0]->width0 >= 16 * dec_w);
+   assert(target->resources[0]->height0 >= nvc0_video_align(dec->base.height)/2);
 
    for (i = 0; i < 4; ++i) {
       struct nv04_resource *res = nv04_resource(target->resources[i]);
