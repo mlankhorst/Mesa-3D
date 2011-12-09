@@ -966,10 +966,8 @@ vl_compositor_render_video(struct vl_compositor *c,
    for (i = 0; i < 4; ++i) {
       if (!interlaced || i < 2 || c->chroma == PIPE_VIDEO_CHROMA_FORMAT_444)
          samplers[i] = c->sampler_nearest;
-      else {
+      else
          samplers[i] = c->sampler_linear;
-         assert(0);
-      }
    }
    assert(c);
    gen_vertex_data_video(c);
@@ -1063,7 +1061,6 @@ vl_compositor_set_buffer_layer(struct vl_compositor *c, unsigned layer,
       struct pipe_sampler_view **sv_cur, **sv_prev = NULL, *sv_weave[6];
       int top = field == PIPE_VIDEO_PICTURE_STRUCTURE_FIELD_TOP;
       sv_cur = buffer->get_sampler_view_planes(buffer, 1);
-      assert(0);
       if (past_count && past[0])
          sv_prev = buffer->get_sampler_view_planes(past[0], 1);
       if (sv_prev) {
