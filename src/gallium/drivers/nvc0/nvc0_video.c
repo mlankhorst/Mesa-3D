@@ -118,7 +118,9 @@ struct nvc0_decoder {
    struct {
       struct nvc0_video_buffer *vidbuf;
       unsigned last_used;
-      unsigned h264_info; // nfi what to put here yet..
+      unsigned field_pic_flag : 1;
+      unsigned decoded_top : 1;
+      unsigned decoded_bottom : 1;
    } refs[17];
    unsigned fence_seq, fw_sizes, last_frame_num, tmp_stride, ref_stride;
 };
@@ -158,16 +160,20 @@ nvc0_decoder_inter_sizes(struct nvc0_decoder *dec, uint32_t slice_count,
 static void
 nvc0_decoder_handle_references(struct nvc0_decoder *dec, struct nvc0_video_buffer *refs[16], unsigned seq, struct nvc0_video_buffer *target)
 {
-   unsigned i, empty_spot = dec->base.max_references + 1;
+   unsigned h264 = u_reduce_video_profile(dec->base.profile) == PIPE_VIDEO_CODEC_MPEG4_AVC;
+   unsigned i, idx, empty_spot = dec->base.max_references + 1;
    for (i = 0; i < dec->base.max_references; ++i) {
-      unsigned idx;
       if (!refs[i])
          continue;
 
       idx = refs[i]->valid_ref;
       //debug_printf("ref[%i] %p in slot %i\n", i, refs[i], idx);
-      assert(target != refs[i]);
-      assert(u_reduce_video_profile(dec->base.profile) != PIPE_VIDEO_CODEC_MPEG4_AVC ||
+      assert(target != refs[i] ||
+             (h264 && empty_spot &&
+              (!dec->refs[idx].decoded_bottom || !dec->refs[idx].decoded_top)));
+      if (target == refs[i])
+         empty_spot = 0;
+      assert(!h264 ||
              dec->refs[idx].last_used == seq - 1);
 
       if (dec->refs[idx].vidbuf != refs[i]) {
@@ -179,6 +185,9 @@ nvc0_decoder_handle_references(struct nvc0_decoder *dec, struct nvc0_video_buffe
       assert(dec->refs[idx].vidbuf == refs[i]);
       dec->refs[idx].last_used = seq;
    }
+   if (!empty_spot)
+      return;
+
    /* Try to find a real empty spot first, there should be one..
     */
    for (i = 0; i < dec->base.max_references + 1; ++i) {
@@ -197,6 +206,7 @@ nvc0_decoder_handle_references(struct nvc0_decoder *dec, struct nvc0_video_buffe
    dec->refs[empty_spot].last_used = seq;
 //   debug_printf("Kicked %p to add %p to slot %i\n", dec->refs[empty_spot].vidbuf, target, i);
    dec->refs[empty_spot].vidbuf = target;
+   dec->refs[empty_spot].decoded_top = dec->refs[empty_spot].decoded_bottom = 0;
    target->valid_ref = empty_spot;
 }
 
@@ -448,11 +458,8 @@ nvc0_decoder_fill_picparm_h264_vp(struct nvc0_decoder *dec,
    nvc0_decoder_inter_sizes(dec, 1, &ring, &h->bucket_size, &h->inter_ring_data_size);
 
    h->u220 = 0;
-   assert(d->frame_mbs_only_flag);
-   assert(!d->mb_adaptive_frame_field_flag);
    h->f0 = 0;
    h->f1 = d->direct_8x8_inference_flag;
-   assert(d->direct_8x8_inference_flag == 1 && d->frame_mbs_only_flag == 1);
    h->weighted_pred_flag = d->weighted_pred_flag;
    h->f3 = 0;
    h->is_reference = d->is_reference;
@@ -460,8 +467,7 @@ nvc0_decoder_fill_picparm_h264_vp(struct nvc0_decoder *dec,
    h->bottom_field_flag = d->bottom_field_flag;
    h->f7 = 0;
    h->log2_max_frame_num_minus4 = d->log2_max_frame_num_minus4;
-   h->u31_45 = d->frame_mbs_only_flag;
-   assert(h->u31_45 == 1);
+   h->u31_45 = 1;
 
    h->pic_order_cnt_type = d->pic_order_cnt_type;
    h->pic_init_qp_minus26 = d->pic_init_qp_minus26;
@@ -479,25 +485,35 @@ nvc0_decoder_fill_picparm_h264_vp(struct nvc0_decoder *dec,
    h->u220 = 0;
    for (i = 0; i < dec->base.max_references; ++i) {
       if (!d->refs[i].surface)
-         continue;
+         break;
       refs[j] = (struct nvc0_video_buffer*)d->refs[i].surface;
       h->refs[j].fifo_idx = j + (j >= 2);
       h->refs[j].tmp_idx = refs[j]->valid_ref;
       h->refs[j].field_order_cnt[0] = d->refs[i].field_order_cnt[0];
       h->refs[j].field_order_cnt[1] = d->refs[i].field_order_cnt[1];
       h->refs[j].frame_idx = d->refs[i].frame_idx;
-      h->refs[j].unk12 = d->refs[i].top_is_reference;
-      h->refs[j].unk13 = d->refs[i].bottom_is_reference;
+      if (!dec->refs[refs[j]->valid_ref].field_pic_flag) {
+         h->refs[j].unk12 = d->refs[i].top_is_reference;
+         h->refs[j].unk13 = d->refs[i].bottom_is_reference;
+      }
       h->refs[j].unk14 = 0;
       h->refs[j].notseenyet = 0;
-      h->refs[j].unk16 = 0;
-      h->refs[j].unk17 = 1;
-      h->refs[j].unk21 = 1;
+      h->refs[j].unk16 = dec->refs[refs[j]->valid_ref].field_pic_flag;
+      h->refs[j].unk17 = dec->refs[refs[j]->valid_ref].decoded_top &&
+                         d->refs[i].top_is_reference;
+      h->refs[j].unk21 = dec->refs[refs[j]->valid_ref].decoded_bottom &&
+                         d->refs[i].bottom_is_reference;
       h->refs[j].pad = 0;
       assert(!d->refs[i].is_long_term);
       j++;
    }
+   for (; i < d->num_ref_frames; ++i)
+      h->refs[j].unk16 = d->field_pic_flag;
    *(struct h264_picparm_vp*)map = *h;
+
+   assert(!d->mb_adaptive_frame_field_flag);
+   assert(d->direct_8x8_inference_flag == 1);
+
    return 0x1113;
 }
 
@@ -512,6 +528,11 @@ nvc0_decoder_fill_picparm_h264_vp_refs(struct nvc0_decoder *dec,
 //    debug_printf("Target: %p\n", target);
 
    h->tmp_idx = target->valid_ref;
+   dec->refs[target->valid_ref].field_pic_flag = d->field_pic_flag;
+   if (!d->field_pic_flag || d->bottom_field_flag)
+      dec->refs[target->valid_ref].decoded_bottom = 1;
+   if (!d->field_pic_flag || !d->bottom_field_flag)
+      dec->refs[target->valid_ref].decoded_top = 1;
 }
 
 static uint32_t
@@ -1103,7 +1124,7 @@ nvc0_create_decoder(struct pipe_context *context,
       if (u_reduce_video_profile(profile) != PIPE_VIDEO_CODEC_MPEG4_AVC) {
          size = mb(height)*16 * mb(width)*16;
       } else {
-         dec->tmp_stride = 16 * mb_half(width) * nvc0_video_align(height) / 2;
+         dec->tmp_stride = 16 * mb_half(width) * nvc0_video_align(height) * 3 / 2;
          size = dec->tmp_stride * (max_references + 1);
       }
       ret = nouveau_bo_new_tile(screen->device, NOUVEAU_BO_VRAM, 0,

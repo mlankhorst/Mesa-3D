@@ -1285,9 +1285,9 @@ vl_compositor_init_video(struct vl_compositor *c, struct pipe_context *pipe,
    c->fs_weave[4] = create_frag_shader_weave(c, 0, 0, 1); // Cb, Cr separate progressive
    if (DEBUG_CONTOUR)
       c->fs_weave[5] = create_frag_shader_sobel(c);
-   for (i = 0; i < Elements(c->fs_weave) - DEBUG_CONTOUR; ++i) {
+   for (i = 0; i < Elements(c->fs_weave) - !DEBUG_CONTOUR; ++i) {
       if (!c->fs_weave[i]) {
-         debug_printf("Unable to create weave fragment shaders.\n");
+         debug_printf("Unable to create weave fragment shaders [%i].\n", i);
          goto fail;
       }
    }
