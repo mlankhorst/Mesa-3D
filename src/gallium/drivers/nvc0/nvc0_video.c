@@ -38,25 +38,35 @@ extern uint64_t
 nouveau_bo_gpu_address(struct nouveau_channel *chan,
 		       struct nouveau_bo *bo);
 
+#define NVC0_HAVE_FIRMWARE 1
+
 // Sorry, I can't redistribute these
 static const uint32_t fw_mpeg12_vuc[] = {
+#ifdef NVC0_HAVE_FIRMWARE
 #include "nvc0-vd-uc-mpeg12.h"
+#endif
 };
 
 static const uint32_t fw_mpeg4_vuc[] = {
+#ifdef NVC0_HAVE_FIRMWARE
 #if 1
 #include "nvc0-vd-uc-mpeg4.h"
 #else // Same, but vp3t differs..
 #include "nvc0-vd-uc-mpeg4-alt.h"
 #endif
+#endif
 };
 
 static const uint32_t fw_vc1_vuc[] = {
+#ifdef NVC0_HAVE_FIRMWARE
 #include "nvc0-vd-uc-vc1.h"
+#endif
 };
 
 static const uint32_t fw_h264_vuc[] = {
+#ifdef NVC0_HAVE_FIRMWARE
 #include "nvc0-vd-uc-h264.h"
+#endif
 };
 
 int
