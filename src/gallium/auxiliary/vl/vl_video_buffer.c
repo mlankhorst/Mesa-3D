@@ -209,6 +209,7 @@ vl_video_buffer_create(struct pipe_context *pipe,
       PIPE_VIDEO_PROFILE_UNKNOWN,
       PIPE_VIDEO_CAP_NPOT_TEXTURES
    );
+   buffer_format = PIPE_FORMAT_NV12;
 
    resource_formats = vl_video_buffer_formats(pipe->screen, buffer_format);
    if (!resource_formats)

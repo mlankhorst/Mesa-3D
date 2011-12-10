@@ -66,12 +66,13 @@ struct vl_compositor
    struct pipe_viewport_state viewport;
    struct pipe_scissor_state scissor;
    struct pipe_vertex_buffer vertex_buf;
-   struct pipe_resource *csc_matrix, *video_res[4];
-   struct pipe_sampler_view *video_sv[4];
-   struct pipe_surface *video_surf[4];
+   struct pipe_resource *csc_matrix, *video_res[5];
+   struct pipe_sampler_view *video_sv[5];
+   struct pipe_surface *video_surf[5];
 
    void *sampler_linear;
    void *sampler_nearest;
+   void *sampler_repeat;
    void *blend_clear, *blend_add;
    void *rast;
    void *dsa;
@@ -93,6 +94,7 @@ struct vl_compositor
    unsigned video_w, video_h;
    unsigned used_layers:VL_COMPOSITOR_MAX_LAYERS;
    struct vl_compositor_layer layers[VL_COMPOSITOR_MAX_LAYERS];
+   float original_sizes[16], csc[16];
 };
 
 /**
