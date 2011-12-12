@@ -43,16 +43,17 @@ struct pipe_context;
  */
 
 #define VL_COMPOSITOR_MAX_LAYERS 16
+#define VL_COMPOSITOR_SAMPLERS 4
 
 struct vl_compositor_layer
 {
    bool clearing;
 
    void *fs;
-   void *samplers[3];
+   void *samplers[VL_COMPOSITOR_SAMPLERS];
    void *blend;
 
-   struct pipe_sampler_view *sampler_views[3];
+   struct pipe_sampler_view *sampler_views[VL_COMPOSITOR_SAMPLERS];
    struct {
       struct vertex2f tl, br;
    } src, dst;
@@ -79,7 +80,7 @@ struct vl_compositor
    void *vertex_elems_state;
 
    void *vs;
-   void *fs_video_buffer2, *fs_video_buffer3;
+   void *fs_video_buffer[4];
    void *fs_weave[6];
    void *fs_rgba;
 
@@ -94,7 +95,7 @@ struct vl_compositor
    unsigned video_w, video_h;
    unsigned used_layers:VL_COMPOSITOR_MAX_LAYERS;
    struct vl_compositor_layer layers[VL_COMPOSITOR_MAX_LAYERS];
-   float original_sizes[16], csc[16];
+   float original_sizes[8], csc[16];
 };
 
 /**
