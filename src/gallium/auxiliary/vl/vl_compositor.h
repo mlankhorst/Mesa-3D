@@ -43,7 +43,7 @@ struct pipe_context;
  */
 
 #define VL_COMPOSITOR_MAX_LAYERS 16
-#define VL_COMPOSITOR_SAMPLERS 4
+#define VL_COMPOSITOR_SAMPLERS 5
 
 struct vl_compositor_layer
 {
@@ -67,9 +67,9 @@ struct vl_compositor
    struct pipe_viewport_state viewport;
    struct pipe_scissor_state scissor;
    struct pipe_vertex_buffer vertex_buf;
-   struct pipe_resource *csc_matrix, *video_res[5];
-   struct pipe_sampler_view *video_sv[5];
-   struct pipe_surface *video_surf[5];
+   struct pipe_resource *csc_matrix, *video_res[6];
+   struct pipe_sampler_view *video_sv[6];
+   struct pipe_surface *video_surf[6];
 
    void *sampler_linear;
    void *sampler_nearest;
@@ -80,8 +80,8 @@ struct vl_compositor
    void *vertex_elems_state;
 
    void *vs;
-   void *fs_video_buffer[2];
-   void *fs_weave[6];
+   void *fs_video_buffer[3];
+   void *fs_weave[8];
    void *fs_rgba;
 
    struct {
