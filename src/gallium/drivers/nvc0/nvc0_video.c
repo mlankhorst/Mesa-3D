@@ -32,61 +32,18 @@
 #include "util/u_video.h"
 #include "util/u_sampler.h"
 
-#define debug_printf(x...) fprintf(stderr, x);
+#define NVC0_HAVE_FIRMWARE
+
+struct nvc0_video_buffer {
+   struct pipe_video_buffer base;
+   unsigned num_planes, valid_ref;
+   struct pipe_resource *resources[4];
+   struct pipe_sampler_view *sampler_view_planes[6];
+};
 
 extern uint64_t
 nouveau_bo_gpu_address(struct nouveau_channel *chan,
-		       struct nouveau_bo *bo);
-
-#define NVC0_HAVE_FIRMWARE 1
-
-// Sorry, I can't redistribute these
-static const uint32_t fw_mpeg12_vuc[] = {
-#ifdef NVC0_HAVE_FIRMWARE
-#include "nvc0-vd-uc-mpeg12.h"
-#endif
-};
-
-static const uint32_t fw_mpeg4_vuc[] = {
-#ifdef NVC0_HAVE_FIRMWARE
-#if 1
-#include "nvc0-vd-uc-mpeg4.h"
-#else // Same, but vp3t differs..
-#include "nvc0-vd-uc-mpeg4-alt.h"
-#endif
-#endif
-};
-
-static const uint32_t fw_vc1_vuc[] = {
-#ifdef NVC0_HAVE_FIRMWARE
-#include "nvc0-vd-uc-vc1.h"
-#endif
-};
-
-static const uint32_t fw_h264_vuc[] = {
-#ifdef NVC0_HAVE_FIRMWARE
-#include "nvc0-vd-uc-h264.h"
-#endif
-};
-
-int
-nvc0_screen_get_video_param(struct pipe_screen *pscreen,
-                            enum pipe_video_profile profile,
-                            enum pipe_video_cap param)
-{
-   switch (param) {
-   case PIPE_VIDEO_CAP_SUPPORTED:
-      return profile != PIPE_VIDEO_PROFILE_UNKNOWN;
-   case PIPE_VIDEO_CAP_NPOT_TEXTURES:
-      return 1;
-   case PIPE_VIDEO_CAP_MAX_WIDTH:
-   case PIPE_VIDEO_CAP_MAX_HEIGHT:
-      return vl_video_buffer_max_size(pscreen);
-   default:
-      debug_printf("unknown video param: %d\n", param);
-      return 0;
-   }
-}
+                       struct nouveau_bo *bo);
 
 static uint32_t nvc0_video_align(uint32_t h) {
    return ((h+0x3f)&~0x3f);
@@ -100,15 +57,55 @@ static uint32_t mb_half(uint32_t coord) {
    return (coord + 0x1f)>>5;
 }
 
+int
+nvc0_screen_get_video_param(struct pipe_screen *pscreen,
+                            enum pipe_video_profile profile,
+                            enum pipe_video_cap param)
+{
+   switch (param) {
+   case PIPE_VIDEO_CAP_SUPPORTED:
+#ifdef NVC0_HAVE_FIRMWARE
+      return profile != PIPE_VIDEO_PROFILE_UNKNOWN;
+#else
+      return 0;
+#endif
+   case PIPE_VIDEO_CAP_NPOT_TEXTURES:
+      return 1;
+   case PIPE_VIDEO_CAP_MAX_WIDTH:
+   case PIPE_VIDEO_CAP_MAX_HEIGHT:
+      return vl_video_buffer_max_size(pscreen);
+   default:
+      debug_printf("unknown video param: %d\n", param);
+      return 0;
+   }
+}
+
+#ifdef NVC0_HAVE_FIRMWARE
+#define debug_printf(x...) fprintf(stderr, x);
+
+// Sorry, I can't redistribute these
+static const uint32_t fw_mpeg12_vuc[] = {
+#include "nvc0-vd-uc-mpeg12.h"
+};
+
+static const uint32_t fw_mpeg4_vuc[] = {
+#if 1
+#include "nvc0-vd-uc-mpeg4.h"
+#else // Same, but vp3t differs..
+#include "nvc0-vd-uc-mpeg4-alt.h"
+#endif
+};
+
+static const uint32_t fw_vc1_vuc[] = {
+#include "nvc0-vd-uc-vc1.h"
+};
+
+static const uint32_t fw_h264_vuc[] = {
+#include "nvc0-vd-uc-h264.h"
+};
+
 #define SLICE_SIZE 0x200
 #define COMM_OFFSET 0x800
-
-struct nvc0_video_buffer {
-   struct pipe_video_buffer base;
-   unsigned num_planes, valid_ref;
-   struct pipe_resource *resources[4];
-   struct pipe_sampler_view *sampler_view_planes[6];
-};
 
 struct nvc0_decoder {
    struct pipe_video_decoder base;
@@ -1024,6 +1021,8 @@ nvc0_decoder_destroy(struct pipe_video_decoder *decoder)
    FREE(dec);
 }
 
+#endif
+
 struct pipe_video_decoder *
 nvc0_create_decoder(struct pipe_context *context,
                     enum pipe_video_profile profile,
@@ -1031,6 +1030,7 @@ nvc0_create_decoder(struct pipe_context *context,
                     enum pipe_video_chroma_format chroma_format,
                     unsigned width, unsigned height, unsigned max_references)
 {
+#ifdef NVC0_HAVE_FIRMWARE
    struct nouveau_screen *screen = &((struct nvc0_context*)context)->screen->base;
    struct nouveau_channel *chan = screen->channel;
    struct nvc0_decoder *dec;
@@ -1225,6 +1225,9 @@ nvc0_create_decoder(struct pipe_context *context,
 fail:
    debug_printf("Creation failed: %s (%i)\n", strerror(-ret), ret);
    nvc0_decoder_destroy(&dec->base);
+#else
+   debug_printf("Cannot create decoder without firmware..\n");
+#endif
    return NULL;
 }
 
