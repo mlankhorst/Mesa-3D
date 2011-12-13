@@ -80,7 +80,7 @@ struct vl_compositor
    void *vertex_elems_state;
 
    void *vs;
-   void *fs_video_buffer[4];
+   void *fs_video_buffer[2];
    void *fs_weave[6];
    void *fs_rgba;
 
@@ -95,7 +95,7 @@ struct vl_compositor
    unsigned video_w, video_h;
    unsigned used_layers:VL_COMPOSITOR_MAX_LAYERS;
    struct vl_compositor_layer layers[VL_COMPOSITOR_MAX_LAYERS];
-   float original_sizes[8], csc[16];
+   float original_sizes[12], csc[16];
 };
 
 /**
