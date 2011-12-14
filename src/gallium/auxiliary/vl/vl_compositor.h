@@ -80,8 +80,8 @@ struct vl_compositor
    void *vertex_elems_state;
 
    void *vs;
-   void *fs_video_buffer[3];
-   void *fs_weave[8];
+   void *fs_video_buffer[2];
+   void *fs_weave[5];
    void *fs_rgba;
 
    struct {
