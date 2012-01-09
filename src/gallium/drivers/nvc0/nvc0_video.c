@@ -41,9 +41,13 @@ struct nvc0_video_buffer {
    struct pipe_sampler_view *sampler_view_planes[6];
 };
 
-extern uint64_t
+#include "nouveau/nouveau_private.h"
+
+static uint64_t
 nouveau_bo_gpu_address(struct nouveau_channel *chan,
-                       struct nouveau_bo *bo);
+                       struct nouveau_bo *bo) {
+   return nouveau_bo(bo)->offset;
+}
 
 static uint32_t nvc0_video_align(uint32_t h) {
    return ((h+0x3f)&~0x3f);
